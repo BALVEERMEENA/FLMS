@@ -1,4 +1,4 @@
-const CACHE_NAME = 'flms-pwa-v1';
+const CACHE_NAME = 'flms-pwa-v3';
 const ASSETS = [
   './',
   './index.html',

@@ -163,3 +163,23 @@ tr:hover td { background:#f8fafc; }
   .content { max-width: none; padding:0; }
   .card { box-shadow:none; border:1px solid #ddd; }
 }
+
+/* v2 monitoring additions */
+.wide-modal { width: min(980px, 100%); }
+.section-title { margin: 14px 0 10px; font-weight: 900; color: #1e3a8a; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; }
+.source-detail { transition: opacity .15s ease; }
+.mini-table { display: grid; gap: 8px; }
+.info-row { display:flex; justify-content:space-between; align-items:flex-start; gap:14px; padding: 10px 12px; border:1px solid var(--border); border-radius: 14px; background:#f8fafc; }
+.info-row span { color: var(--muted); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+.info-row b { text-align:right; font-size: 13px; }
+@media (max-width: 700px) {
+  .info-row { display:grid; gap: 4px; }
+  .info-row b { text-align:left; }
+}
+
+
+/* v3 permission and deletion workflow additions */
+.permissions-grid { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; }
+.check-tile { display:flex; align-items:flex-start; gap:9px; padding:10px 12px; border:1px solid var(--border); border-radius:14px; background:#f8fafc; font-size:13px; font-weight:700; }
+.check-tile input { margin-top:2px; }
+@media (max-width: 700px) { .permissions-grid { grid-template-columns: 1fr; } }

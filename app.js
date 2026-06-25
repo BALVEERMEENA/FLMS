@@ -3,7 +3,7 @@
    For real multi-user shared database, connect Firebase/Auth later.
 */
 
-const APP_KEY = 'flms-pwa-db-v1';
+const APP_KEY = 'flms-pwa-db-v2';
 const SESSION_KEY = 'flms-current-user-v1';
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -12,6 +12,39 @@ const today = () => new Date().toISOString().slice(0, 10);
 const now = () => new Date().toISOString();
 const fmtDate = (value) => value ? new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: value.includes('T') ? 'short' : undefined }) : '-';
 const escapeHtml = (str = '') => String(str).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
+
+const PERMISSION_DEFINITIONS = [
+  ['createLead', 'Create new leads/files'],
+  ['editLead', 'Edit all visible leads/files'],
+  ['editOwnLead', 'Edit own/assigned leads only'],
+  ['assignLead', 'Assign leads to users'],
+  ['moveStage', 'Move file stages'],
+  ['updateDocuments', 'Update document checklist'],
+  ['saveDisbursement', 'Save disbursement details'],
+  ['updateCompliance', 'Update compliance checklist'],
+  ['requestLeadDelete', 'Request lead deletion'],
+  ['approveLeadDelete', 'Approve lead deletion'],
+  ['viewReports', 'View reports'],
+  ['exportData', 'Export CSV/backup data'],
+  ['backupData', 'Backup and restore data'],
+  ['manageAdmin', 'Open admin setup'],
+  ['viewAudit', 'View audit logs']
+];
+
+function defaultPermissions(role = 'user') {
+  const all = Object.fromEntries(PERMISSION_DEFINITIONS.map(([key]) => [key, true]));
+  if (role === 'admin') return all;
+  if (role === 'manager') return {
+    createLead: true, editLead: true, editOwnLead: true, assignLead: true, moveStage: true,
+    updateDocuments: true, saveDisbursement: true, updateCompliance: true, requestLeadDelete: true,
+    approveLeadDelete: false, viewReports: true, exportData: true, backupData: false, manageAdmin: false, viewAudit: false
+  };
+  return {
+    createLead: true, editLead: false, editOwnLead: true, assignLead: false, moveStage: true,
+    updateDocuments: true, saveDisbursement: false, updateCompliance: true, requestLeadDelete: true,
+    approveLeadDelete: false, viewReports: false, exportData: false, backupData: false, manageAdmin: false, viewAudit: false
+  };
+}
 
 let db = loadDB();
 let currentUser = loadCurrentUser();
@@ -35,7 +68,7 @@ function seedDB() {
   ];
   const stages = [
     'Lead Generated', 'Customer Contacted', 'Interested', 'Document Collection', 'Login / File Created',
-    'CIBIL / Eligibility Check', 'Field Investigation', 'Legal / Technical / Valuation', 'Sanction',
+    'CIBIL / Eligibility Check', 'Field Investigation', 'PSIR', 'Valuation', 'Technical', 'Legal', 'Sanction',
     'Agreement / Documentation', 'Disbursement', 'Post-disbursement Compliance', 'Closed / Completed', 'Rejected'
   ].map((name, index) => ({ id: uid('stg'), name, order: index + 1, active: true, terminal: ['Closed / Completed', 'Rejected'].includes(name), createdAt }));
   const documents = [
@@ -43,20 +76,20 @@ function seedDB() {
   ].map((name, i) => ({ id: uid('doc'), name, productId: i >= 6 ? products[i === 7 ? 0 : 3].id : '', required: true, active: true, createdAt }));
   const complianceParams = ['Agreement Completed', 'NACH / ECS Completed', 'Insurance Updated', 'Welcome Call Done', 'Document Dispatch Done', 'Original Document Received']
     .map(name => ({ id: uid('cmp'), name, active: true, createdAt }));
-  const pendingReasons = ['Customer Not Available', 'Document Pending', 'Approval Pending', 'Technical Pending', 'Legal Pending', 'System Issue', 'Rejected by Customer']
+  const pendingReasons = ['Customer Not Available', 'Document Pending', 'Approval Pending', 'PSIR Pending', 'Valuation Pending', 'Technical Pending', 'Legal Pending', 'Advocate Pending', 'Valuer Pending', 'System Issue', 'Rejected by Customer']
     .map(name => ({ id: uid('rsn'), name, active: true, createdAt }));
 
   return {
     meta: { version: 1, createdAt, updatedAt: createdAt },
     settings: { appName: 'FLMS', branchLabel: 'Branch', currency: '₹' },
     users: [
-      { id: adminId, name: 'Admin User', email: 'admin@flms.local', password: 'Admin@12345', role: 'admin', branchId, active: true, createdAt },
-      { id: managerId, name: 'Branch Manager', email: 'manager@flms.local', password: 'Manager@123', role: 'manager', branchId, active: true, createdAt },
-      { id: userId, name: 'Field User', email: 'user@flms.local', password: 'User@123', role: 'user', branchId, active: true, createdAt }
+      { id: adminId, name: 'Admin User', email: 'admin@flms.local', password: 'Admin@12345', role: 'admin', branchId, active: true, permissions: defaultPermissions('admin'), createdAt },
+      { id: managerId, name: 'Branch Manager', email: 'manager@flms.local', password: 'Manager@123', role: 'manager', branchId, active: true, permissions: defaultPermissions('manager'), createdAt },
+      { id: userId, name: 'Field User', email: 'user@flms.local', password: 'User@123', role: 'user', branchId, active: true, permissions: defaultPermissions('user'), createdAt }
     ],
     branches: [{ id: branchId, name: 'Main Branch', active: true, createdAt }],
     products,
-    leadSources: ['Walk-in', 'Cold Call', 'Referral', 'Campaign', 'Existing Customer'].map(name => ({ id: uid('src'), name, active: true, createdAt })),
+    leadSources: ['Branch Generated', 'DST', 'DSA', 'Other'].map(name => ({ id: uid('src'), name, active: true, createdAt })),
     stages,
     documents,
     complianceParams,
@@ -74,11 +107,75 @@ function seedDB() {
 function loadDB() {
   try {
     const raw = localStorage.getItem(APP_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = migrateDB(JSON.parse(raw));
+      localStorage.setItem(APP_KEY, JSON.stringify(parsed));
+      return parsed;
+    }
   } catch (e) { console.warn('DB load failed', e); }
-  const fresh = seedDB();
+  const fresh = migrateDB(seedDB());
   localStorage.setItem(APP_KEY, JSON.stringify(fresh));
   return fresh;
+}
+
+function migrateDB(database) {
+  if (!database || typeof database !== 'object') database = seedDB();
+  const createdAt = now();
+  const requiredSources = ['Branch Generated', 'DST', 'DSA', 'Other'];
+  database.leadSources = Array.isArray(database.leadSources) ? database.leadSources : [];
+  requiredSources.forEach(name => {
+    let item = database.leadSources.find(x => String(x.name).toLowerCase() === name.toLowerCase());
+    if (!item) database.leadSources.push({ id: uid('src'), name, active: true, createdAt });
+    else item.active = true;
+  });
+  database.leadSources.forEach(x => { if (!requiredSources.includes(x.name)) x.active = false; });
+
+  const requiredStages = [
+    'Lead Generated', 'Customer Contacted', 'Interested', 'Document Collection', 'Login / File Created',
+    'CIBIL / Eligibility Check', 'Field Investigation', 'PSIR', 'Valuation', 'Technical', 'Legal', 'Sanction',
+    'Agreement / Documentation', 'Disbursement', 'Post-disbursement Compliance', 'Closed / Completed', 'Rejected'
+  ];
+  database.stages = Array.isArray(database.stages) ? database.stages : [];
+  requiredStages.forEach((name, index) => {
+    let item = database.stages.find(x => String(x.name).toLowerCase() === name.toLowerCase());
+    if (!item) database.stages.push({ id: uid('stg'), name, order: index + 1, active: true, terminal: ['Closed / Completed', 'Rejected'].includes(name), createdAt });
+    else { item.order = index + 1; item.active = true; item.terminal = ['Closed / Completed', 'Rejected'].includes(name); }
+  });
+  database.stages.forEach(x => { if (x.name === 'Legal / Technical / Valuation') x.active = false; });
+
+  database.users = Array.isArray(database.users) ? database.users : [];
+  database.users.forEach(u => {
+    u.permissions = { ...defaultPermissions(u.role), ...(u.permissions || {}) };
+  });
+
+  database.leads = Array.isArray(database.leads) ? database.leads : [];
+  database.leads.forEach(l => {
+    l.branchEmployeeName ??= '';
+    l.dstName ??= '';
+    l.dsaName ??= '';
+    l.otherSourceName ??= '';
+    l.processingTeamName ??= '';
+    l.valuerName ??= '';
+    l.advocateName ??= '';
+    l.psirPersonName ??= '';
+    l.deleteStatus ??= l.isDeleted ? 'approved' : 'none';
+    l.deleteRequestedBy ??= '';
+    l.deleteRequestedAt ??= '';
+    l.deleteRequestReason ??= '';
+    l.deleteApprovedBy ??= '';
+    l.deleteApprovedAt ??= '';
+    l.deleteRejectedBy ??= '';
+    l.deleteRejectedAt ??= '';
+    l.deleteRejectReason ??= '';
+  });
+  database.movements = Array.isArray(database.movements) ? database.movements : [];
+  database.movements.forEach(m => {
+    m.assignedDate ??= m.updatedAt ? String(m.updatedAt).slice(0, 10) : '';
+    m.receivedDate ??= '';
+  });
+  database.meta = database.meta || {};
+  database.meta.version = 3;
+  return database;
 }
 
 function saveDB() {
@@ -109,14 +206,25 @@ function audit(action, entityType, entityId, oldValue = null, newValue = null) {
   if (db.auditLogs.length > 1000) db.auditLogs.length = 1000;
 }
 
+function currentFullUser() {
+  return currentUser ? db.users.find(u => u.id === currentUser.id) || currentUser : null;
+}
+
 function can(permission) {
   if (!currentUser) return false;
-  if (currentUser.role === 'admin') return true;
-  if (permission === 'viewReports') return ['admin', 'manager'].includes(currentUser.role);
-  if (permission === 'manageAdmin') return currentUser.role === 'admin';
-  if (permission === 'assignLead') return ['admin', 'manager'].includes(currentUser.role);
-  if (permission === 'viewAllBranch') return ['admin', 'manager'].includes(currentUser.role);
-  return true;
+  const full = currentFullUser();
+  if (!full || full.active === false) return false;
+  if (full.role === 'admin') return true;
+  const permissions = { ...defaultPermissions(full.role), ...(full.permissions || {}) };
+  return permissions[permission] === true;
+}
+
+function ownsLead(lead) {
+  return !!lead && (lead.assignedTo === currentUser?.id || lead.createdBy === currentUser?.id);
+}
+
+function canEditLead(lead) {
+  return can('editLead') || (can('editOwnLead') && ownsLead(lead));
 }
 
 function getById(collection, id) { return db[collection].find(x => x.id === id); }
@@ -126,6 +234,32 @@ function productName(id) { return getById('products', id)?.name || '-'; }
 function branchName(id) { return getById('branches', id)?.name || '-'; }
 function userName(id) { return getById('users', id)?.name || '-'; }
 function sourceName(id) { return getById('leadSources', id)?.name || '-'; }
+function sourceDetail(lead) {
+  const src = sourceName(lead?.leadSourceId);
+  if (src === 'Branch Generated') return lead?.branchEmployeeName || '-';
+  if (src === 'DST') return lead?.dstName || '-';
+  if (src === 'DSA') return lead?.dsaName || '-';
+  if (src === 'Other') return lead?.otherSourceName || '-';
+  return '-';
+}
+function sourceDetailLabel(lead) {
+  const src = sourceName(lead?.leadSourceId);
+  if (src === 'Branch Generated') return 'Branch Employee';
+  if (src === 'DST') return 'DST Name';
+  if (src === 'DSA') return 'DSA Name';
+  if (src === 'Other') return 'Other Source Name';
+  return 'Source Detail';
+}
+function latestMovementForStage(leadId, stageKeyword) {
+  return db.movements
+    .filter(m => m.leadId === leadId && stageName(m.toStageId).toLowerCase().includes(stageKeyword.toLowerCase()))
+    .sort((a,b) => new Date(b.updatedAt) - new Date(a.updatedAt))[0];
+}
+function stageDateSummary(leadId, stageKeyword) {
+  const m = latestMovementForStage(leadId, stageKeyword);
+  if (!m) return { assignedDate: '', receivedDate: '' };
+  return { assignedDate: m.assignedDate || '', receivedDate: m.receivedDate || '' };
+}
 function reasonName(id) { return getById('pendingReasons', id)?.name || '-'; }
 
 function visibleLeads() {
@@ -184,8 +318,8 @@ function navButtons() {
     ['leads', '📁', 'Files'],
     ...(can('viewReports') ? [['reports', '📈', 'Reports']] : []),
     ...(can('manageAdmin') ? [['admin', '⚙️', 'Admin']] : []),
-    ...(can('manageAdmin') ? [['audit', '🧾', 'Audit']] : []),
-    ['backup', '💾', 'Backup']
+    ...(can('viewAudit') ? [['audit', '🧾', 'Audit']] : []),
+    ...(can('backupData') ? [['backup', '💾', 'Backup']] : [])
   ];
   return items.map(([route, icon, label]) => `<button class="${currentRoute === route ? 'active' : ''}" onclick="navigate('${route}')"><span class="icon">${icon}</span>${label}</button>`).join('');
 }
@@ -226,7 +360,7 @@ function renderShell(content) {
         <section class="content">${content}</section>
       </main>
       <nav class="mobile-bottom">${mobileNavButtons()}</nav>
-      ${currentRoute !== 'lead' ? `<button class="fab" title="Add Lead" onclick="openLeadModal()">+</button>` : ''}
+      ${currentRoute !== 'lead' && can('createLead') ? `<button class="fab" title="Add Lead" onclick="openLeadModal()">+</button>` : ''}
     </div>
   `;
 }
@@ -242,8 +376,8 @@ function render() {
   else if (currentRoute === 'lead') content = renderLeadDetail(currentLeadId);
   else if (currentRoute === 'admin' && can('manageAdmin')) content = renderAdmin();
   else if (currentRoute === 'reports' && can('viewReports')) content = renderReports();
-  else if (currentRoute === 'audit' && can('manageAdmin')) content = renderAudit();
-  else if (currentRoute === 'backup') content = renderBackup();
+  else if (currentRoute === 'audit' && can('viewAudit')) content = renderAudit();
+  else if (currentRoute === 'backup' && can('backupData')) content = renderBackup();
   else content = renderDashboard();
   $('#app').innerHTML = renderShell(content);
 }
@@ -318,11 +452,11 @@ function renderDashboard() {
     </div>
     <div class="grid grid-2" style="margin-top:16px">
       <div class="card">
-        <div class="card-title"><h2>Stage-wise Movement</h2><button class="btn" onclick="navigate('reports')">View Reports</button></div>
+        <div class="card-title"><h2>Stage-wise Movement</h2>${can('viewReports') ? `<button class="btn" onclick="navigate('reports')">View Reports</button>` : ''}</div>
         ${stageCounts.length ? `<div class="bar-list">${stageCounts.map(x => `<div class="bar-row"><div class="bar-head"><b>${escapeHtml(x.name)}</b><span>${x.count}</span></div><div class="bar-bg"><div class="bar-fill" style="width:${Math.round((x.count / maxStage) * 100)}%"></div></div></div>`).join('')}</div>` : `<div class="empty">No file movement yet. Add your first lead.</div>`}
       </div>
       <div class="card">
-        <div class="card-title"><h2>Recent Files</h2><button class="btn primary" onclick="openLeadModal()">Add Lead</button></div>
+        <div class="card-title"><h2>Recent Files</h2>${can('createLead') ? `<button class="btn primary" onclick="openLeadModal()">Add Lead</button>` : ''}</div>
         ${recent.length ? renderMiniLeadList(recent) : `<div class="empty">No leads available.</div>`}
       </div>
     </div>`;
@@ -342,7 +476,7 @@ function renderLeads() {
     <div class="card">
       <div class="card-title">
         <div><h2>Lead & File Register</h2><p class="muted small">Search, filter, open file details or create a new lead.</p></div>
-        <div class="btn-row"><button class="btn" onclick="exportLeadsCSV()">Export CSV</button><button class="btn primary" onclick="openLeadModal()">+ New Lead</button></div>
+        <div class="btn-row">${can('exportData') ? `<button class="btn" onclick="exportLeadsCSV()">Export CSV</button>` : ''}${can('createLead') ? `<button class="btn primary" onclick="openLeadModal()">+ New Lead</button>` : ''}</div>
       </div>
       <div class="grid grid-4" style="margin-bottom:14px">
         <input class="input" id="leadSearch" placeholder="Search customer/mobile" oninput="filterLeadTable()" />
@@ -357,15 +491,15 @@ function renderLeads() {
 function renderLeadTable(leads) {
   if (!leads.length) return `<div class="empty">No leads found. Create your first lead.</div>`;
   return `<div class="table-wrap"><table><thead><tr><th>Customer</th><th>Product</th><th>Stage</th><th>Status</th><th>Assigned</th><th>Follow-up</th><th>Updated</th><th>Action</th></tr></thead><tbody>
-    ${leads.map(l => `<tr data-search="${escapeHtml((l.customerName + ' ' + l.mobile + ' ' + productName(l.productId)).toLowerCase())}" data-stage="${l.currentStageId}" data-product="${l.productId}" data-status="${l.status}">
+    ${leads.map(l => `<tr data-search="${escapeHtml((l.customerName + ' ' + l.mobile + ' ' + productName(l.productId) + ' ' + sourceDetail(l) + ' ' + (l.processingTeamName || '') + ' ' + (l.valuerName || '') + ' ' + (l.advocateName || '') + ' ' + (l.psirPersonName || '')).toLowerCase())}" data-stage="${l.currentStageId}" data-product="${l.productId}" data-status="${l.status}">
       <td><b>${escapeHtml(l.customerName)}</b><div class="muted small">${escapeHtml(l.mobile)}${l.alternateMobile ? ' / ' + escapeHtml(l.alternateMobile) : ''}</div></td>
-      <td>${escapeHtml(productName(l.productId))}<div class="muted small">${escapeHtml(sourceName(l.leadSourceId))}</div></td>
+      <td>${escapeHtml(productName(l.productId))}<div class="muted small">${escapeHtml(sourceName(l.leadSourceId))}: ${escapeHtml(sourceDetail(l))}</div></td>
       <td><span class="badge blue">${escapeHtml(stageName(l.currentStageId))}</span></td>
-      <td>${statusBadge(l.status)}</td>
+      <td>${statusBadge(l.status)}${l.deleteStatus === 'pending' ? '<br><span class="badge amber">Delete Requested</span>' : l.deleteStatus === 'rejected' ? '<br><span class="badge gray">Delete Rejected</span>' : ''}</td>
       <td>${escapeHtml(userName(l.assignedTo))}<div class="muted small">${escapeHtml(branchName(l.branchId))}</div></td>
       <td>${l.nextFollowUpDate ? `<span class="badge ${isOverdue(l.nextFollowUpDate) ? 'red' : l.nextFollowUpDate === today() ? 'amber' : 'gray'}">${escapeHtml(l.nextFollowUpDate)}</span>` : '-'}</td>
       <td>${fmtDate(l.updatedAt || l.createdAt)}</td>
-      <td><div class="btn-row"><button class="btn" onclick="navigate('lead','${l.id}')">Open</button>${can('assignLead') ? `<button class="btn danger" onclick="deleteLead('${l.id}')">Delete</button>` : ''}</div></td>
+      <td><div class="btn-row"><button class="btn" onclick="navigate('lead','${l.id}')">Open</button>${leadDeleteAction(l)}</div></td>
     </tr>`).join('')}
   </tbody></table></div>`;
 }
@@ -383,17 +517,24 @@ function filterLeadTable() {
 
 function openLeadModal(id = null) {
   const lead = id ? db.leads.find(l => l.id === id) : null;
+  if (!id && !can('createLead')) return toast('You do not have permission to create leads');
+  if (id && !canEditLead(lead)) return toast('You do not have permission to edit this lead');
   const firstStage = activeItems('stages')[0];
   const html = `
-    <div class="modal-backdrop" onclick="closeModal(event)"><form class="modal" onclick="event.stopPropagation()" onsubmit="saveLead(event, '${id || ''}')">
+    <div class="modal-backdrop" onclick="closeModal(event)"><form class="modal wide-modal" onclick="event.stopPropagation()" onsubmit="saveLead(event, '${id || ''}')">
       <div class="modal-head"><h2>${lead ? 'Edit Lead' : 'Create New Lead'}</h2><button type="button" class="close" onclick="removeModal()">×</button></div>
+      <div class="section-title">Customer & Product</div>
       <div class="form-grid">
         ${field('Customer Name','customerName','text',lead?.customerName || '', true)}
         ${field('Mobile Number','mobile','tel',lead?.mobile || '', true)}
         ${field('Alternate Mobile','alternateMobile','tel',lead?.alternateMobile || '')}
         ${selectField('Branch','branchId',activeItems('branches'),lead?.branchId || currentUser.branchId,true)}
         ${selectField('Product','productId',activeItems('products'),lead?.productId || '',true)}
-        ${selectField('Lead Source','leadSourceId',activeItems('leadSources'),lead?.leadSourceId || '',true)}
+        ${sourceSelectField(lead?.leadSourceId || '')}
+        ${sourceDetailInput('Branch Employee Name','branchEmployeeName','branch',lead?.branchEmployeeName || '')}
+        ${sourceDetailInput('DST Name','dstName','dst',lead?.dstName || '')}
+        ${sourceDetailInput('DSA Name','dsaName','dsa',lead?.dsaName || '')}
+        ${sourceDetailInput('Other Source Name','otherSourceName','other',lead?.otherSourceName || '')}
         ${can('assignLead') ? selectField('Assigned To','assignedTo',db.users.filter(u => u.active !== false),lead?.assignedTo || currentUser.id,true) : `<input type="hidden" name="assignedTo" value="${currentUser.id}">`}
         ${field('Loan Amount','loanAmount','number',lead?.loanAmount || '')}
         ${field('Next Follow-up Date','nextFollowUpDate','date',lead?.nextFollowUpDate || '')}
@@ -401,13 +542,40 @@ function openLeadModal(id = null) {
         ${lead ? selectField('Current Stage','currentStageId',activeItems('stages'),lead.currentStageId,true) : `<input type="hidden" name="currentStageId" value="${firstStage?.id || ''}">`}
         ${selectSimple('Status','status',['New','Active','Pending','Disbursed','Completed','Rejected','Closed'],lead?.status || 'New')}
       </div><br>
+      <div class="section-title">Processing & Critical Monitoring Persons</div>
+      <div class="form-grid">
+        ${field('Processing Team Name','processingTeamName','text',lead?.processingTeamName || '', true)}
+        ${field('Valuer Name','valuerName','text',lead?.valuerName || '', true)}
+        ${field('Advocate Name','advocateName','text',lead?.advocateName || '', true)}
+        ${field('PSIR Person Name','psirPersonName','text',lead?.psirPersonName || '', true)}
+      </div><br>
       <div class="field"><label>Address</label><textarea class="textarea" name="address">${escapeHtml(lead?.address || '')}</textarea></div><br>
       <div class="field"><label>Remarks</label><textarea class="textarea" name="remarks">${escapeHtml(lead?.remarks || '')}</textarea></div><br>
       <div class="btn-row"><button class="btn primary" type="submit">Save Lead</button><button class="btn" type="button" onclick="removeModal()">Cancel</button></div>
     </form></div>`;
   document.body.insertAdjacentHTML('beforeend', html);
+  updateSourceFields();
 }
 
+function sourceSelectField(value = '') {
+  return `<div class="field"><label>Lead Source</label><select class="select" name="leadSourceId" required onchange="updateSourceFields()"><option value="">Select</option>${activeItems('leadSources').map(i => `<option value="${i.id}" ${i.id === value ? 'selected' : ''}>${escapeHtml(i.name)}</option>`).join('')}</select></div>`;
+}
+function sourceDetailInput(label, name, key, value = '') {
+  return `<div class="field source-detail" data-source-key="${key}"><label>${escapeHtml(label)}</label><input class="input" name="${name}" type="text" value="${escapeHtml(value)}"></div>`;
+}
+function updateSourceFields() {
+  const select = document.querySelector('select[name="leadSourceId"]');
+  if (!select) return;
+  const selectedName = select.options[select.selectedIndex]?.text || '';
+  const map = { 'Branch Generated': 'branch', 'DST': 'dst', 'DSA': 'dsa', 'Other': 'other' };
+  const key = map[selectedName] || '';
+  $$('.source-detail').forEach(el => {
+    const input = $('input', el);
+    const show = el.dataset.sourceKey === key;
+    el.style.display = show ? '' : 'none';
+    if (input) input.required = show;
+  });
+}
 function field(label, name, type = 'text', value = '', required = false) {
   return `<div class="field"><label>${escapeHtml(label)}</label><input class="input" name="${name}" type="${type}" value="${escapeHtml(value)}" ${required ? 'required' : ''}></div>`;
 }
@@ -428,15 +596,18 @@ function saveLead(event, id) {
   event.preventDefault();
   const data = formData(event.target);
   if (id) {
+    const existingLead = db.leads.find(l => l.id === id);
+    if (!canEditLead(existingLead)) return toast('You do not have permission to edit this lead');
     const idx = db.leads.findIndex(l => l.id === id);
     if (idx < 0) return;
     const old = { ...db.leads[idx] };
     db.leads[idx] = { ...db.leads[idx], ...data, loanAmount: Number(data.loanAmount || 0), updatedAt: now() };
     audit('lead_updated', 'lead', id, old, db.leads[idx]);
   } else {
-    const lead = { id: uid('lead'), ...data, loanAmount: Number(data.loanAmount || 0), createdBy: currentUser.id, createdAt: now(), updatedAt: now(), isDeleted: false };
+    if (!can('createLead')) return toast('You do not have permission to create leads');
+    const lead = { id: uid('lead'), ...data, loanAmount: Number(data.loanAmount || 0), createdBy: currentUser.id, createdAt: now(), updatedAt: now(), isDeleted: false, deleteStatus: 'none' };
     db.leads.unshift(lead);
-    db.movements.unshift({ id: uid('mov'), leadId: lead.id, fromStageId: '', toStageId: lead.currentStageId, status: lead.status, remarks: 'Lead created', pendingReasonId: '', updatedBy: currentUser.id, updatedAt: now(), nextFollowUpDate: lead.nextFollowUpDate || '' });
+    db.movements.unshift({ id: uid('mov'), leadId: lead.id, fromStageId: '', toStageId: lead.currentStageId, status: lead.status, remarks: 'Lead created', pendingReasonId: '', assignedDate: today(), receivedDate: today(), updatedBy: currentUser.id, updatedAt: now(), nextFollowUpDate: lead.nextFollowUpDate || '' });
     initLeadChecklists(lead);
     audit('lead_created', 'lead', lead.id, null, lead);
   }
@@ -449,14 +620,67 @@ function initLeadChecklists(lead) {
   activeItems('complianceParams').forEach(c => db.complianceRecords.push({ id: uid('lcmp'), leadId: lead.id, complianceId: c.id, name: c.name, completed: false, completedDate: '', remarks: '', updatedBy: currentUser.id, updatedAt: now() }));
 }
 
-function deleteLead(id) {
-  if (!confirm('Delete this lead? It will be soft deleted.')) return;
-  const lead = db.leads.find(l => l.id === id);
+function leadDeleteAction(lead) {
+  if (!lead) return '';
+  if (lead.deleteStatus === 'pending') {
+    if (can('approveLeadDelete')) return `<button class="btn danger" onclick="adminTab='deleteRequests'; navigate('admin')">Review Delete</button>`;
+    return `<button class="btn" disabled>Delete Pending</button>`;
+  }
+  if (!can('requestLeadDelete')) return '';
+  return `<button class="btn danger" onclick="requestLeadDelete('${lead.id}')">Request Delete</button>`;
+}
+
+function requestLeadDelete(id) {
+  if (!can('requestLeadDelete')) return toast('You do not have permission to request deletion');
+  const lead = db.leads.find(l => l.id === id && !l.isDeleted);
   if (!lead) return;
-  lead.isDeleted = true;
+  if (lead.deleteStatus === 'pending') return toast('Delete request already pending with admin');
+  const reason = prompt('Enter reason for delete request. Admin approval is required.');
+  if (reason === null) return;
+  if (!reason.trim()) return toast('Delete reason is required');
+  lead.deleteStatus = 'pending';
+  lead.deleteRequestedBy = currentUser.id;
+  lead.deleteRequestedAt = now();
+  lead.deleteRequestReason = reason.trim();
+  lead.deleteApprovedBy = '';
+  lead.deleteApprovedAt = '';
+  lead.deleteRejectedBy = '';
+  lead.deleteRejectedAt = '';
+  lead.deleteRejectReason = '';
   lead.updatedAt = now();
-  audit('lead_deleted', 'lead', id);
-  saveDB(); toast('Lead deleted'); render();
+  audit('lead_delete_requested', 'lead', id, null, { reason: reason.trim() });
+  saveDB(); toast('Delete request sent to admin'); render();
+}
+
+function approveLeadDelete(id) {
+  if (!can('approveLeadDelete')) return toast('Only authorized admin can approve delete');
+  const lead = db.leads.find(l => l.id === id && !l.isDeleted);
+  if (!lead) return;
+  if (lead.deleteStatus !== 'pending') return toast('No pending delete request found');
+  if (!confirm(`Approve deletion of ${lead.customerName}? This will remove it from active records.`)) return;
+  lead.deleteStatus = 'approved';
+  lead.isDeleted = true;
+  lead.deleteApprovedBy = currentUser.id;
+  lead.deleteApprovedAt = now();
+  lead.updatedAt = now();
+  audit('lead_delete_approved', 'lead', id, { requestedBy: lead.deleteRequestedBy, reason: lead.deleteRequestReason });
+  saveDB(); toast('Lead deleted after admin approval'); render();
+}
+
+function rejectLeadDelete(id) {
+  if (!can('approveLeadDelete')) return toast('Only authorized admin can reject delete');
+  const lead = db.leads.find(l => l.id === id && !l.isDeleted);
+  if (!lead) return;
+  if (lead.deleteStatus !== 'pending') return toast('No pending delete request found');
+  const reason = prompt('Enter reason for rejecting delete request');
+  if (reason === null) return;
+  lead.deleteStatus = 'rejected';
+  lead.deleteRejectedBy = currentUser.id;
+  lead.deleteRejectedAt = now();
+  lead.deleteRejectReason = reason.trim();
+  lead.updatedAt = now();
+  audit('lead_delete_rejected', 'lead', id, { requestedBy: lead.deleteRequestedBy, requestReason: lead.deleteRequestReason }, { rejectReason: reason.trim() });
+  saveDB(); toast('Delete request rejected'); render();
 }
 
 function renderLeadDetail(id) {
@@ -467,35 +691,38 @@ function renderLeadDetail(id) {
   const movements = db.movements.filter(m => m.leadId === lead.id).sort((a,b) => new Date(b.updatedAt) - new Date(a.updatedAt));
   const disb = db.disbursements.find(d => d.leadId === lead.id) || {};
   return `
-    <div class="btn-row" style="margin-bottom:14px"><button class="btn" onclick="navigate('leads')">← Back</button><button class="btn" onclick="openLeadModal('${lead.id}')">Edit Lead</button><button class="btn primary" onclick="window.print()">Print</button></div>
+    <div class="btn-row" style="margin-bottom:14px"><button class="btn" onclick="navigate('leads')">← Back</button>${canEditLead(lead) ? `<button class="btn" onclick="openLeadModal('${lead.id}')">Edit Lead</button>` : ''}${leadDeleteAction(lead)}<button class="btn primary" onclick="window.print()">Print</button></div>
     <div class="grid grid-3">
       <div class="card"><div class="muted small">Customer</div><h2>${escapeHtml(lead.customerName)}</h2><p class="muted">${escapeHtml(lead.mobile)}${lead.alternateMobile ? ' / ' + escapeHtml(lead.alternateMobile) : ''}</p>${statusBadge(lead.status)}</div>
       <div class="card"><div class="muted small">Current Stage</div><h2>${escapeHtml(stageName(lead.currentStageId))}</h2><p class="muted">Assigned: ${escapeHtml(userName(lead.assignedTo))}</p></div>
       <div class="card"><div class="muted small">Product & Amount</div><h2>${escapeHtml(productName(lead.productId))}</h2><p class="muted">${db.settings.currency || '₹'} ${Number(lead.loanAmount || 0).toLocaleString()}</p></div>
     </div>
+    ${renderMonitoringSummary(lead)}
     <div class="grid grid-2" style="margin-top:16px">
       <div class="card">
         <div class="card-title"><h2>Move File Stage</h2></div>
-        <form onsubmit="moveStage(event, '${lead.id}')">
+        ${can('moveStage') ? `<form onsubmit="moveStage(event, '${lead.id}')">
           <div class="form-grid">
             ${selectField('New Stage','toStageId',activeItems('stages'),lead.currentStageId,true)}
             ${selectSimple('Status','status',['Active','Pending','Disbursed','Completed','Rejected','Closed'],lead.status || 'Active')}
             ${selectField('Pending Reason','pendingReasonId',activeItems('pendingReasons'),'',false)}
+            ${field('Assigned / Allotted Date','assignedDate','date',today(),true)}
+            ${field('Received Date','receivedDate','date','',true)}
             ${field('Next Follow-up','nextFollowUpDate','date',lead.nextFollowUpDate || '')}
           </div><br>
           <div class="field"><label>Movement Remarks</label><textarea class="textarea" name="remarks" placeholder="Enter clear remarks" required></textarea></div><br>
           <button class="btn primary" type="submit">Save Movement</button>
-        </form>
+        </form>` : `<div class="empty">You do not have permission to move file stages.</div>`}
       </div>
       <div class="card">
         <div class="card-title"><h2>Movement Timeline</h2></div>
-        ${movements.length ? `<div class="timeline">${movements.map((m,i) => `<div class="timeline-item"><div class="timeline-dot">${movements.length-i}</div><div class="timeline-card"><b>${escapeHtml(m.fromStageId ? stageName(m.fromStageId) + ' → ' : '')}${escapeHtml(stageName(m.toStageId))}</b><div>${statusBadge(m.status)} ${m.pendingReasonId ? `<span class="badge amber">${escapeHtml(reasonName(m.pendingReasonId))}</span>` : ''}</div><p class="muted small">${escapeHtml(m.remarks || '-')}</p><div class="small muted">${escapeHtml(userName(m.updatedBy))} · ${fmtDate(m.updatedAt)} ${m.nextFollowUpDate ? '· Follow-up: ' + escapeHtml(m.nextFollowUpDate) : ''}</div></div></div>`).join('')}</div>` : `<div class="empty">No movement recorded.</div>`}
+        ${movements.length ? `<div class="timeline">${movements.map((m,i) => `<div class="timeline-item"><div class="timeline-dot">${movements.length-i}</div><div class="timeline-card"><b>${escapeHtml(m.fromStageId ? stageName(m.fromStageId) + ' → ' : '')}${escapeHtml(stageName(m.toStageId))}</b><div>${statusBadge(m.status)} ${m.pendingReasonId ? `<span class="badge amber">${escapeHtml(reasonName(m.pendingReasonId))}</span>` : ''}</div><p class="muted small">${escapeHtml(m.remarks || '-')}</p><div class="small muted">Assigned: ${escapeHtml(m.assignedDate || '-')} · Received: ${escapeHtml(m.receivedDate || '-')}</div><div class="small muted">${escapeHtml(userName(m.updatedBy))} · ${fmtDate(m.updatedAt)} ${m.nextFollowUpDate ? '· Follow-up: ' + escapeHtml(m.nextFollowUpDate) : ''}</div></div></div>`).join('')}</div>` : `<div class="empty">No movement recorded.</div>`}
       </div>
     </div>
     <div class="grid grid-2" style="margin-top:16px">
       <div class="card">
         <div class="card-title"><h2>Document Checklist</h2><span class="badge blue">${docs.filter(d => d.received).length}/${docs.length}</span></div>
-        ${docs.length ? `<div class="check-list">${docs.map(d => `<div class="check-row ${d.received ? 'done' : ''}"><div><b>${escapeHtml(d.documentName)}</b><div class="muted small">${d.required ? 'Required' : 'Optional'} ${d.receivedDate ? '· Received: ' + escapeHtml(d.receivedDate) : ''}</div></div><button class="btn ${d.received ? 'success' : ''}" onclick="toggleDoc('${d.id}')">${d.received ? 'Received' : 'Mark Received'}</button></div>`).join('')}</div>` : `<div class="empty">No document parameters found for this product.</div>`}
+        ${docs.length ? `<div class="check-list">${docs.map(d => `<div class="check-row ${d.received ? 'done' : ''}"><div><b>${escapeHtml(d.documentName)}</b><div class="muted small">${d.required ? 'Required' : 'Optional'} ${d.receivedDate ? '· Received: ' + escapeHtml(d.receivedDate) : ''}</div></div>${can('updateDocuments') ? `<button class="btn ${d.received ? 'success' : ''}" onclick="toggleDoc('${d.id}')">${d.received ? 'Received' : 'Mark Received'}</button>` : `<span class="badge gray">View Only</span>`}</div>`).join('')}</div>` : `<div class="empty">No document parameters found for this product.</div>`}
       </div>
       <div class="card">
         <div class="card-title"><h2>Disbursement Details</h2></div>
@@ -511,32 +738,59 @@ function renderLeadDetail(id) {
             ${field('Insurance Amount','insuranceAmount','number',disb.insuranceAmount || '')}
           </div><br>
           <div class="field"><label>Remarks</label><textarea class="textarea" name="remarks">${escapeHtml(disb.remarks || '')}</textarea></div><br>
-          <button class="btn primary" type="submit">Save Disbursement</button>
+          ${can('saveDisbursement') ? `<button class="btn primary" type="submit">Save Disbursement</button>` : `<div class="empty">You do not have permission to save disbursement details.</div>`}
         </form>
       </div>
     </div>
     <div class="card" style="margin-top:16px">
       <div class="card-title"><h2>Post-disbursement Compliance</h2><span class="badge green">${comp.filter(c => c.completed).length}/${comp.length}</span></div>
-      ${comp.length ? `<div class="grid grid-2">${comp.map(c => `<div class="check-row ${c.completed ? 'done' : ''}"><div><b>${escapeHtml(c.name)}</b><div class="muted small">${c.completedDate ? 'Completed: ' + escapeHtml(c.completedDate) : 'Pending'}</div></div><button class="btn ${c.completed ? 'success' : ''}" onclick="toggleCompliance('${c.id}')">${c.completed ? 'Completed' : 'Mark Done'}</button></div>`).join('')}</div>` : `<div class="empty">No compliance parameters found.</div>`}
+      ${comp.length ? `<div class="grid grid-2">${comp.map(c => `<div class="check-row ${c.completed ? 'done' : ''}"><div><b>${escapeHtml(c.name)}</b><div class="muted small">${c.completedDate ? 'Completed: ' + escapeHtml(c.completedDate) : 'Pending'}</div></div>${can('updateCompliance') ? `<button class="btn ${c.completed ? 'success' : ''}" onclick="toggleCompliance('${c.id}')">${c.completed ? 'Completed' : 'Mark Done'}</button>` : `<span class="badge gray">View Only</span>`}</div>`).join('')}</div>` : `<div class="empty">No compliance parameters found.</div>`}
     </div>`;
+}
+
+function renderMonitoringSummary(lead) {
+  const legal = stageDateSummary(lead.id, 'Legal');
+  const valuation = stageDateSummary(lead.id, 'Valuation');
+  const technical = stageDateSummary(lead.id, 'Technical');
+  const psir = stageDateSummary(lead.id, 'PSIR');
+  const rows = [
+    ['Lead Source', `${sourceName(lead.leadSourceId)} / ${sourceDetail(lead)}`],
+    ['Processing Team', lead.processingTeamName || '-'],
+    ['Valuer', lead.valuerName || '-'],
+    ['Advocate', lead.advocateName || '-'],
+    ['PSIR Person', lead.psirPersonName || '-']
+  ];
+  const dateRows = [
+    ['PSIR', psir], ['Valuation', valuation], ['Technical', technical], ['Legal', legal]
+  ];
+  return `<div class="card" style="margin-top:16px">
+    <div class="card-title"><h2>Critical Monitoring</h2><span class="badge purple">PSIR / Valuation / Technical / Legal</span></div>
+    <div class="grid grid-2">
+      <div class="mini-table">${rows.map(r => `<div class="info-row"><span>${escapeHtml(r[0])}</span><b>${escapeHtml(r[1])}</b></div>`).join('')}</div>
+      <div class="mini-table">${dateRows.map(([label, d]) => `<div class="info-row"><span>${escapeHtml(label)}</span><b>Assigned: ${escapeHtml(d.assignedDate || '-')} · Received: ${escapeHtml(d.receivedDate || '-')}</b></div>`).join('')}</div>
+    </div>
+  </div>`;
 }
 
 function moveStage(event, leadId) {
   event.preventDefault();
+  if (!can('moveStage')) return toast('You do not have permission to move stages');
   const data = formData(event.target);
   const lead = db.leads.find(l => l.id === leadId);
   const oldStage = lead.currentStageId;
+  if (!data.assignedDate || !data.receivedDate) return toast('Assigned date and received date are required for every stage movement');
   lead.currentStageId = data.toStageId;
   lead.status = data.status;
   lead.nextFollowUpDate = data.nextFollowUpDate || '';
   lead.remarks = data.remarks;
   lead.updatedAt = now();
-  db.movements.unshift({ id: uid('mov'), leadId, fromStageId: oldStage, toStageId: data.toStageId, status: data.status, remarks: data.remarks, pendingReasonId: data.pendingReasonId || '', updatedBy: currentUser.id, updatedAt: now(), nextFollowUpDate: data.nextFollowUpDate || '' });
+  db.movements.unshift({ id: uid('mov'), leadId, fromStageId: oldStage, toStageId: data.toStageId, status: data.status, remarks: data.remarks, pendingReasonId: data.pendingReasonId || '', assignedDate: data.assignedDate || '', receivedDate: data.receivedDate || '', updatedBy: currentUser.id, updatedAt: now(), nextFollowUpDate: data.nextFollowUpDate || '' });
   audit('stage_changed', 'lead', leadId, { stage: oldStage }, { stage: data.toStageId, status: data.status });
   saveDB(); toast('Movement saved'); render();
 }
 
 function toggleDoc(id) {
+  if (!can('updateDocuments')) return toast('You do not have permission to update documents');
   const d = db.leadDocuments.find(x => x.id === id);
   if (!d) return;
   d.received = !d.received;
@@ -549,6 +803,7 @@ function toggleDoc(id) {
 
 function saveDisbursement(event, leadId) {
   event.preventDefault();
+  if (!can('saveDisbursement')) return toast('You do not have permission to save disbursement details');
   const data = formData(event.target);
   const existing = db.disbursements.find(d => d.leadId === leadId);
   const payload = { ...data, sanctionedAmount: Number(data.sanctionedAmount || 0), disbursedAmount: Number(data.disbursedAmount || 0), roi: Number(data.roi || 0), tenure: Number(data.tenure || 0), emi: Number(data.emi || 0), insuranceAmount: Number(data.insuranceAmount || 0), updatedBy: currentUser.id, updatedAt: now() };
@@ -562,6 +817,7 @@ function saveDisbursement(event, leadId) {
 }
 
 function toggleCompliance(id) {
+  if (!can('updateCompliance')) return toast('You do not have permission to update compliance');
   const c = db.complianceRecords.find(x => x.id === id);
   if (!c) return;
   c.completed = !c.completed;
@@ -579,13 +835,14 @@ function toggleCompliance(id) {
 
 function renderAdmin() {
   const tabs = [
-    ['users','Users'], ['branches','Branches'], ['products','Products'], ['leadSources','Lead Sources'], ['stages','Stages'], ['documents','Documents'], ['complianceParams','Compliance'], ['pendingReasons','Pending Reasons']
+    ['users','Users'], ['deleteRequests','Delete Requests'], ['branches','Branches'], ['products','Products'], ['leadSources','Lead Sources'], ['stages','Stages'], ['documents','Documents'], ['complianceParams','Compliance'], ['pendingReasons','Pending Reasons']
   ];
   return `<div class="card"><div class="tabs">${tabs.map(t => `<button class="tab ${adminTab === t[0] ? 'active' : ''}" onclick="adminTab='${t[0]}'; render()">${t[1]}</button>`).join('')}</div>${renderAdminTab()}</div>`;
 }
 
 function renderAdminTab() {
   if (adminTab === 'users') return renderUsersAdmin();
+  if (adminTab === 'deleteRequests') return renderDeleteRequestsAdmin();
   if (adminTab === 'stages') return renderGenericAdmin('stages', ['name','order','active','terminal'], 'Stage');
   if (adminTab === 'documents') return renderDocumentsAdmin();
   if (adminTab === 'complianceParams') return renderGenericAdmin('complianceParams', ['name','active'], 'Compliance Parameter');
@@ -598,16 +855,33 @@ function renderAdminTab() {
 function renderUsersAdmin() {
   return `
     <div class="card-title"><h2>Users</h2><button class="btn primary" onclick="openUserModal()">+ Add User</button></div>
-    <div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Branch</th><th>Status</th><th>Action</th></tr></thead><tbody>
-      ${db.users.map(u => `<tr><td><b>${escapeHtml(u.name)}</b></td><td>${escapeHtml(u.email)}</td><td>${roleBadge(u.role)}</td><td>${escapeHtml(branchName(u.branchId))}</td><td>${u.active ? '<span class="badge green">Active</span>' : '<span class="badge red">Inactive</span>'}</td><td><div class="btn-row"><button class="btn" onclick="openUserModal('${u.id}')">Edit</button><button class="btn" onclick="toggleActive('users','${u.id}')">${u.active ? 'Deactivate' : 'Activate'}</button></div></td></tr>`).join('')}
+    <div class="table-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Branch</th><th>Rights</th><th>Status</th><th>Action</th></tr></thead><tbody>
+      ${db.users.map(u => `<tr><td><b>${escapeHtml(u.name)}</b></td><td>${escapeHtml(u.email)}</td><td>${roleBadge(u.role)}</td><td>${escapeHtml(branchName(u.branchId))}</td><td><span class="badge blue">${Object.values({ ...defaultPermissions(u.role), ...(u.permissions || {}) }).filter(Boolean).length} rights</span></td><td>${u.active ? '<span class="badge green">Active</span>' : '<span class="badge red">Inactive</span>'}</td><td><div class="btn-row"><button class="btn" onclick="openUserModal('${u.id}')">Edit</button><button class="btn" onclick="toggleActive('users','${u.id}')">${u.active ? 'Deactivate' : 'Activate'}</button></div></td></tr>`).join('')}
     </tbody></table></div>`;
+}
+
+function permissionCheckboxes(user) {
+  const role = user?.role || 'user';
+  const perms = { ...defaultPermissions(role), ...(user?.permissions || {}) };
+  return `<div class="permissions-grid">${PERMISSION_DEFINITIONS.map(([key, label]) => `<label class="check-tile"><input type="checkbox" name="perm_${key}" ${perms[key] ? 'checked' : ''}> <span>${escapeHtml(label)}</span></label>`).join('')}</div>`;
+}
+
+function applyRoleDefaultsInUserModal() {
+  const form = document.querySelector('.modal form');
+  if (!form) return;
+  const role = form.querySelector('[name="role"]')?.value || 'user';
+  const defaults = defaultPermissions(role);
+  PERMISSION_DEFINITIONS.forEach(([key]) => {
+    const box = form.querySelector(`[name="perm_${key}"]`);
+    if (box) box.checked = !!defaults[key];
+  });
 }
 
 function openUserModal(id = '') {
   const u = id ? getById('users', id) : null;
-  const html = `<div class="modal-backdrop" onclick="closeModal(event)"><form class="modal" onclick="event.stopPropagation()" onsubmit="saveUser(event,'${id}')"><div class="modal-head"><h2>${u ? 'Edit User' : 'Add User'}</h2><button type="button" class="close" onclick="removeModal()">×</button></div><div class="form-grid">
-    ${field('Name','name','text',u?.name || '',true)}${field('Email','email','email',u?.email || '',true)}${field('Password','password','text',u?.password || '',true)}${selectSimple('Role','role',['admin','manager','user'],u?.role || 'user')}${selectField('Branch','branchId',activeItems('branches'),u?.branchId || currentUser.branchId,true)}${selectSimple('Status','active',['true','false'],String(u?.active ?? true))}
-  </div><br><div class="btn-row"><button class="btn primary" type="submit">Save User</button><button class="btn" type="button" onclick="removeModal()">Cancel</button></div></form></div>`;
+  const html = `<div class="modal-backdrop" onclick="closeModal(event)"><form class="modal wide-modal" onclick="event.stopPropagation()" onsubmit="saveUser(event,'${id}')"><div class="modal-head"><h2>${u ? 'Edit User' : 'Add User'}</h2><button type="button" class="close" onclick="removeModal()">×</button></div><div class="form-grid">
+    ${field('Name','name','text',u?.name || '',true)}${field('Email','email','email',u?.email || '',true)}${field('Password','password','text',u?.password || '',true)}${selectSimple('Role','role',['admin','manager','user'],u?.role || 'user').replace('<select class="select" name="role">','<select class="select" name="role" onchange="applyRoleDefaultsInUserModal()">')}${selectField('Branch','branchId',activeItems('branches'),u?.branchId || currentUser.branchId,true)}${selectSimple('Status','active',['true','false'],String(u?.active ?? true))}
+  </div><br><div class="section-title">User Rights / Permissions</div>${permissionCheckboxes(u)}<br><div class="btn-row"><button class="btn primary" type="submit">Save User</button><button class="btn" type="button" onclick="removeModal()">Cancel</button></div></form></div>`;
   document.body.insertAdjacentHTML('beforeend', html);
 }
 
@@ -616,6 +890,9 @@ function saveUser(event, id) {
   const data = formData(event.target);
   data.email = data.email.trim().toLowerCase();
   data.active = data.active === 'true';
+  const permissions = {};
+  PERMISSION_DEFINITIONS.forEach(([key]) => { permissions[key] = event.target[`perm_${key}`]?.checked === true; delete data[`perm_${key}`]; });
+  data.permissions = permissions;
   if (db.users.some(u => u.email.toLowerCase() === data.email && u.id !== id)) return toast('Email already exists');
   if (id) {
     const u = getById('users', id);
@@ -626,6 +903,16 @@ function saveUser(event, id) {
     db.users.push(user); audit('user_created', 'user', user.id);
   }
   saveDB(); removeModal(); toast('User saved'); render();
+}
+
+function renderDeleteRequestsAdmin() {
+  const requests = db.leads
+    .filter(l => !l.isDeleted && l.deleteStatus === 'pending')
+    .sort((a, b) => new Date(b.deleteRequestedAt || b.updatedAt) - new Date(a.deleteRequestedAt || a.updatedAt));
+  return `<div class="card-title"><h2>Lead Delete Requests</h2><span class="badge amber">${requests.length} pending</span></div>
+    ${requests.length ? `<div class="table-wrap"><table><thead><tr><th>Customer</th><th>Product/Stage</th><th>Requested By</th><th>Reason</th><th>Date</th><th>Action</th></tr></thead><tbody>
+      ${requests.map(l => `<tr><td><b>${escapeHtml(l.customerName)}</b><div class="muted small">${escapeHtml(l.mobile)}</div></td><td>${escapeHtml(productName(l.productId))}<div class="muted small">${escapeHtml(stageName(l.currentStageId))}</div></td><td>${escapeHtml(userName(l.deleteRequestedBy))}</td><td>${escapeHtml(l.deleteRequestReason || '-')}</td><td>${fmtDate(l.deleteRequestedAt)}</td><td><div class="btn-row"><button class="btn" onclick="navigate('lead','${l.id}')">Open</button><button class="btn danger" onclick="approveLeadDelete('${l.id}')">Approve Delete</button><button class="btn" onclick="rejectLeadDelete('${l.id}')">Reject</button></div></td></tr>`).join('')}
+    </tbody></table></div>` : `<div class="empty">No pending delete approval requests.</div>`}`;
 }
 
 function renderGenericAdmin(collection, columns, label) {
@@ -695,7 +982,7 @@ function toggleActive(collection, id) {
 
 function renderReports() {
   const types = [['leads','Lead Report'], ['pending','Pending Stage'], ['disbursed','Disbursement'], ['compliance','Compliance Pending'], ['followups','Follow-up Due']];
-  return `<div class="card"><div class="card-title"><h2>Reports</h2><div class="btn-row"><button class="btn" onclick="exportCurrentReport()">Export CSV</button><button class="btn" onclick="window.print()">Print</button></div></div><div class="tabs">${types.map(t => `<button class="tab ${reportType === t[0] ? 'active' : ''}" onclick="reportType='${t[0]}'; render()">${t[1]}</button>`).join('')}</div>${renderReportTable()}</div>`;
+  return `<div class="card"><div class="card-title"><h2>Reports</h2><div class="btn-row">${can('exportData') ? `<button class="btn" onclick="exportCurrentReport()">Export CSV</button>` : ''}<button class="btn" onclick="window.print()">Print</button></div></div><div class="tabs">${types.map(t => `<button class="tab ${reportType === t[0] ? 'active' : ''}" onclick="reportType='${t[0]}'; render()">${t[1]}</button>`).join('')}</div>${renderReportTable()}</div>`;
 }
 
 function reportRows() {
@@ -713,10 +1000,10 @@ function reportRows() {
 function renderReportTable() {
   const rows = reportRows();
   if (!rows.length) return `<div class="empty">No data for selected report.</div>`;
-  return `<div class="table-wrap"><table><thead><tr><th>Customer</th><th>Mobile</th><th>Product</th><th>Branch</th><th>Assigned</th><th>Stage</th><th>Status</th><th>Follow-up</th><th>Disbursed</th><th>Compliance</th></tr></thead><tbody>${rows.map(l => {
+  return `<div class="table-wrap"><table><thead><tr><th>Customer</th><th>Mobile</th><th>Product</th><th>Branch</th><th>Assigned</th><th>Stage</th><th>Source</th><th>Processing</th><th>Valuer</th><th>Advocate</th><th>PSIR</th><th>Status</th><th>Follow-up</th><th>Disbursed</th><th>Compliance</th></tr></thead><tbody>${rows.map(l => {
     const disb = db.disbursements.find(d => d.leadId === l.id);
     const comp = db.complianceRecords.filter(c => c.leadId === l.id);
-    return `<tr><td><b>${escapeHtml(l.customerName)}</b></td><td>${escapeHtml(l.mobile)}</td><td>${escapeHtml(productName(l.productId))}</td><td>${escapeHtml(branchName(l.branchId))}</td><td>${escapeHtml(userName(l.assignedTo))}</td><td>${escapeHtml(stageName(l.currentStageId))}</td><td>${statusBadge(l.status)}</td><td>${escapeHtml(l.nextFollowUpDate || '-')}</td><td>${disb ? (db.settings.currency || '₹') + ' ' + Number(disb.disbursedAmount || 0).toLocaleString() : '-'}</td><td>${comp.length ? comp.filter(c => c.completed).length + '/' + comp.length : '-'}</td></tr>`;
+    return `<tr><td><b>${escapeHtml(l.customerName)}</b></td><td>${escapeHtml(l.mobile)}</td><td>${escapeHtml(productName(l.productId))}</td><td>${escapeHtml(branchName(l.branchId))}</td><td>${escapeHtml(userName(l.assignedTo))}</td><td>${escapeHtml(stageName(l.currentStageId))}</td><td>${escapeHtml(sourceName(l.leadSourceId))}<div class="muted small">${escapeHtml(sourceDetail(l))}</div></td><td>${escapeHtml(l.processingTeamName || '-')}</td><td>${escapeHtml(l.valuerName || '-')}</td><td>${escapeHtml(l.advocateName || '-')}</td><td>${escapeHtml(l.psirPersonName || '-')}</td><td>${statusBadge(l.status)}${l.deleteStatus === 'pending' ? '<br><span class="badge amber">Delete Requested</span>' : l.deleteStatus === 'rejected' ? '<br><span class="badge gray">Delete Rejected</span>' : ''}</td><td>${escapeHtml(l.nextFollowUpDate || '-')}</td><td>${disb ? (db.settings.currency || '₹') + ' ' + Number(disb.disbursedAmount || 0).toLocaleString() : '-'}</td><td>${comp.length ? comp.filter(c => c.completed).length + '/' + comp.length : '-'}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
@@ -726,7 +1013,7 @@ function renderAudit() {
 }
 
 function renderBackup() {
-  return `<div class="grid grid-2"><div class="card"><h2>Export Backup</h2><p class="muted">Download full local database JSON. Keep this safe.</p><button class="btn primary" onclick="exportBackup()">Download Backup JSON</button></div><div class="card"><h2>Import Backup</h2><p class="muted">Import a previously exported JSON backup. This will replace current browser data.</p><input class="input" type="file" id="backupFile" accept="application/json"><br><br><button class="btn danger" onclick="importBackup()">Import & Replace Data</button></div><div class="card"><h2>Reset Demo Data</h2><p class="muted">This clears all local data and restores default admin/user/master data.</p><button class="btn danger" onclick="resetDB()">Reset App</button></div><div class="card"><h2>Storage Note</h2><p class="muted">This GitHub-only version saves data in browser localStorage. For shared branch/team usage across devices, connect Firebase Auth + Firestore.</p></div></div>`;
+  return `<div class="grid grid-2"><div class="card"><h2>Export Backup</h2><p class="muted">Download full local database JSON. Keep this safe.</p><button class="btn primary" onclick="exportBackup()">Download Backup JSON</button></div><div class="card"><h2>Import Backup</h2><p class="muted">Import a previously exported JSON backup. This will replace current browser data.</p><input class="input" type="file" id="backupFile" accept="application/json"><br><br><button class="btn danger" onclick="importBackup()">Import & Replace Data</button></div><div class="card"><h2>Storage Note</h2><p class="muted">This GitHub-only version saves data in browser localStorage. For shared branch/team usage across devices, connect Firebase Auth + Firestore.</p></div></div>`;
 }
 
 function csvEscape(v) { return `"${String(v ?? '').replace(/"/g, '""')}"`; }
@@ -741,16 +1028,52 @@ function exportRowsCSV(filename, rows) {
   downloadText(filename, csv, 'text/csv');
 }
 function leadExportRows(leads = visibleLeads()) {
-  return leads.map(l => ({ Customer: l.customerName, Mobile: l.mobile, Alternate: l.alternateMobile, Branch: branchName(l.branchId), Product: productName(l.productId), Source: sourceName(l.leadSourceId), Stage: stageName(l.currentStageId), Status: l.status, AssignedTo: userName(l.assignedTo), LoanAmount: l.loanAmount, FollowUpDate: l.nextFollowUpDate, Remarks: l.remarks, CreatedAt: l.createdAt, UpdatedAt: l.updatedAt }));
+  return leads.map(l => {
+    const psir = stageDateSummary(l.id, 'PSIR');
+    const valuation = stageDateSummary(l.id, 'Valuation');
+    const technical = stageDateSummary(l.id, 'Technical');
+    const legal = stageDateSummary(l.id, 'Legal');
+    return {
+      Customer: l.customerName,
+      Mobile: l.mobile,
+      Alternate: l.alternateMobile,
+      Branch: branchName(l.branchId),
+      Product: productName(l.productId),
+      Source: sourceName(l.leadSourceId),
+      SourceDetailType: sourceDetailLabel(l),
+      SourceDetailName: sourceDetail(l),
+      ProcessingTeamName: l.processingTeamName,
+      ValuerName: l.valuerName,
+      AdvocateName: l.advocateName,
+      PSIRPersonName: l.psirPersonName,
+      Stage: stageName(l.currentStageId),
+      Status: l.status,
+      AssignedTo: userName(l.assignedTo),
+      LoanAmount: l.loanAmount,
+      FollowUpDate: l.nextFollowUpDate,
+      PSIRAssignedDate: psir.assignedDate,
+      PSIRReceivedDate: psir.receivedDate,
+      ValuationAssignedDate: valuation.assignedDate,
+      ValuationReceivedDate: valuation.receivedDate,
+      TechnicalAssignedDate: technical.assignedDate,
+      TechnicalReceivedDate: technical.receivedDate,
+      LegalAssignedDate: legal.assignedDate,
+      LegalReceivedDate: legal.receivedDate,
+      Remarks: l.remarks,
+      CreatedAt: l.createdAt,
+      UpdatedAt: l.updatedAt
+    };
+  });
 }
-function exportLeadsCSV() { exportRowsCSV(`flms-leads-${today()}.csv`, leadExportRows()); }
-function exportCurrentReport() { exportRowsCSV(`flms-${reportType}-report-${today()}.csv`, leadExportRows(reportRows())); }
-function exportAuditCSV() { exportRowsCSV(`flms-audit-${today()}.csv`, db.auditLogs.map(a => ({ Action: a.action, EntityType: a.entityType, EntityId: a.entityId, User: userName(a.performedBy), Date: a.performedAt }))); }
-function exportBackup() { downloadText(`flms-backup-${today()}.json`, JSON.stringify(db, null, 2), 'application/json'); }
+function exportLeadsCSV() { if (!can('exportData')) return toast('You do not have permission to export data'); exportRowsCSV(`flms-leads-${today()}.csv`, leadExportRows()); }
+function exportCurrentReport() { if (!can('exportData')) return toast('You do not have permission to export data'); exportRowsCSV(`flms-${reportType}-report-${today()}.csv`, leadExportRows(reportRows())); }
+function exportAuditCSV() { if (!can('exportData')) return toast('You do not have permission to export data'); exportRowsCSV(`flms-audit-${today()}.csv`, db.auditLogs.map(a => ({ Action: a.action, EntityType: a.entityType, EntityId: a.entityId, User: userName(a.performedBy), Date: a.performedAt }))); }
+function exportBackup() { if (!can('backupData')) return toast('You do not have permission to export backup'); downloadText(`flms-backup-${today()}.json`, JSON.stringify(db, null, 2), 'application/json'); }
 function importBackup() {
+  if (!can('backupData')) return toast('You do not have permission to import backup');
   const file = $('#backupFile')?.files?.[0]; if (!file) return toast('Select backup JSON file');
   const reader = new FileReader();
-  reader.onload = () => { try { const parsed = JSON.parse(reader.result); if (!parsed.users || !parsed.leads) throw new Error('Invalid backup'); db = parsed; saveDB(); setCurrentUser(null); toast('Backup imported. Login again.'); render(); } catch(e) { toast('Invalid backup file'); } };
+  reader.onload = () => { try { const parsed = JSON.parse(reader.result); if (!parsed.users || !parsed.leads) throw new Error('Invalid backup'); db = migrateDB(parsed); saveDB(); setCurrentUser(null); toast('Backup imported. Login again.'); render(); } catch(e) { toast('Invalid backup file'); } };
   reader.readAsText(file);
 }
 function resetDB() { if (!confirm('Reset all data?')) return; localStorage.removeItem(APP_KEY); localStorage.removeItem(SESSION_KEY); db = loadDB(); currentUser = null; render(); }
@@ -772,4 +1095,4 @@ if ('serviceWorker' in navigator) {
 render();
 
 // Expose functions for inline handlers
-Object.assign(window, { navigate, login, logout, installApp, openLeadModal, saveLead, closeModal, removeModal, filterLeadTable, deleteLead, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, resetDB });
+Object.assign(window, { navigate, login, logout, installApp, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup });
