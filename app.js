@@ -1295,6 +1295,7 @@ function isStandalone() {
 async function installApp() {
   if (isStandalone()) { toast('FLMS is already installed — you are using the installed app.'); return; }
   if (deferredPrompt) {
+    document.getElementById('installBanner')?.remove();
     deferredPrompt.prompt();
     try {
       const { outcome } = await deferredPrompt.userChoice;
@@ -1338,8 +1339,26 @@ function openInstallHelp() {
   document.body.insertAdjacentHTML('beforeend', html);
 }
 
-window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; });
-window.addEventListener('appinstalled', () => { deferredPrompt = null; toast('✅ FLMS installed successfully. Open it from your home screen.'); });
+function showInstallBanner() {
+  if (!deferredPrompt || isStandalone()) return;
+  if (document.getElementById('installBanner')) return;
+  if (localStorage.getItem('flms_install_dismissed') === '1') return;
+  const el = document.createElement('div');
+  el.id = 'installBanner';
+  el.className = 'install-banner';
+  el.innerHTML = `<div class="ib-text">📲 <b>Install FLMS</b><span class="muted small">One-tap install is ready</span></div><div class="btn-row"><button class="btn primary" onclick="installApp()">Install now</button><button class="btn ghost" onclick="dismissInstallBanner()">Later</button></div>`;
+  document.body.appendChild(el);
+}
+function dismissInstallBanner() {
+  document.getElementById('installBanner')?.remove();
+  localStorage.setItem('flms_install_dismissed', '1');
+}
+
+// The browser fires this only when it considers the app installable. We keep
+// the event so the in-app Install button / banner can trigger the real
+// native install (a WebAPK), not a plain shortcut.
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; showInstallBanner(); });
+window.addEventListener('appinstalled', () => { deferredPrompt = null; dismissInstallBanner(); localStorage.removeItem('flms_install_dismissed'); toast('✅ FLMS installed. Open it from your home screen.'); });
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js').catch(console.warn));
@@ -1348,4 +1367,4 @@ if ('serviceWorker' in navigator) {
 render();
 
 // Expose functions for inline handlers
-Object.assign(window, { navigate, login, logout, installApp, refreshApp, toggleSidebar, gotoReport, clearLeadFilters, openInstallHelp, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });
+Object.assign(window, { navigate, login, logout, installApp, refreshApp, toggleSidebar, gotoReport, clearLeadFilters, openInstallHelp, dismissInstallBanner, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });
