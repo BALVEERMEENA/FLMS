@@ -53,6 +53,13 @@ let currentLeadId = null;
 let adminTab = 'users';
 let reportType = 'leads';
 let deferredPrompt = null;
+let sidebarCollapsed = localStorage.getItem('flms_sidebar_collapsed') === '1';
+
+function toggleSidebar() {
+  sidebarCollapsed = !sidebarCollapsed;
+  localStorage.setItem('flms_sidebar_collapsed', sidebarCollapsed ? '1' : '0');
+  render();
+}
 
 function seedDB() {
   const createdAt = now();
@@ -331,7 +338,7 @@ function navButtons() {
     ...(can('viewAudit') ? [['audit', '🧾', 'Audit']] : []),
     ...(can('backupData') ? [['backup', '💾', 'Backup']] : [])
   ];
-  return items.map(([route, icon, label]) => `<button class="${isRouteActive(route) ? 'active' : ''}" onclick="navigate('${route}')"><span class="icon">${icon}</span>${label}</button>`).join('');
+  return items.map(([route, icon, label]) => `<button class="${isRouteActive(route) ? 'active' : ''}" onclick="navigate('${route}')" title="${escapeHtml(label)}"><span class="icon">${icon}</span><span class="lbl">${label}</span></button>`).join('');
 }
 
 function mobileNavButtons() {
@@ -348,25 +355,28 @@ function mobileNavButtons() {
 function renderShell(content) {
   const [title, subtitle] = pageTitle();
   return `
-    <div class="app-shell">
+    <div class="app-shell${sidebarCollapsed ? ' collapsed' : ''}">
       <aside class="sidebar">
         <div class="brand">
           <div class="logo">F</div>
-          <div><div class="brand-title">${escapeHtml(db.settings.appName || 'FLMS')}</div><div class="brand-subtitle">File & Lead Movement</div></div>
+          <div class="brand-text"><div class="brand-title">${escapeHtml(db.settings.appName || 'FLMS')}</div><div class="brand-subtitle">File & Lead Movement</div></div>
         </div>
         <nav class="nav">${navButtons()}</nav>
         <div class="sidebar-footer">
           <div class="user-chip"><b>${escapeHtml(currentUser.name)}</b><span>${escapeHtml(currentUser.email)} · ${escapeHtml(currentUser.role)}</span></div>
-          <button class="btn full ghost" onclick="logout()">Logout</button>
+          <button class="btn full ghost" onclick="logout()"><span class="ico">⎋</span><span class="lbl">Logout</span></button>
         </div>
       </aside>
       <main class="main">
         <header class="topbar">
-          <div><h1>${title}</h1><p>${subtitle}</p></div>
-          <div class="btn-row">
-            <button class="btn" onclick="refreshApp()" title="Fetch the latest version">🔄 Update</button>
-            <button class="btn" onclick="installApp()">Install App</button>
-            <button class="btn" onclick="logout()">Logout</button>
+          <div class="topbar-left">
+            <button class="icon-btn sidebar-toggle" onclick="toggleSidebar()" title="${sidebarCollapsed ? 'Expand menu' : 'Collapse menu'}" aria-label="Toggle menu">☰</button>
+            <div class="topbar-head"><h1>${title}</h1><p>${subtitle}</p></div>
+          </div>
+          <div class="btn-row topbar-actions">
+            <button class="btn icon-btn" onclick="refreshApp()" title="Update to latest version"><span class="ico">🔄</span><span class="lbl">Update</span></button>
+            <button class="btn icon-btn" onclick="installApp()" title="Install app"><span class="ico">📲</span><span class="lbl">Install</span></button>
+            <button class="btn icon-btn" onclick="logout()" title="Logout"><span class="ico">⎋</span><span class="lbl">Logout</span></button>
           </div>
         </header>
         <section class="content">${content}</section>
@@ -455,14 +465,14 @@ function renderDashboard() {
   const recent = leads.slice(0, 8);
   return `
     <div class="grid grid-4">
-      ${kpi('Total Files', leads.length, '📁', 'All visible leads/files')}
-      ${kpi('Active Files', active, '⚡', 'Not closed or rejected')}
-      ${kpi('Disbursed', disbursed, '✅', 'Disbursement stage/status')}
-      ${kpi('Compliance Pending', compliancePending, '🧾', 'Post-disbursement pending')}
-      ${kpi('Today Follow-ups', todayFollow, '📞', 'Due today')}
-      ${kpi('Overdue Follow-ups', overdue, '⏰', 'Past due date')}
-      ${kpi('Rejected', leads.filter(l => l.status === 'Rejected').length, '🚫', 'Rejected files')}
-      ${kpi('Products', activeItems('products').length, '🏦', 'Active loan products')}
+      ${kpi('Total Files', leads.length, '📁', 'All visible leads/files', "navigate('leads')")}
+      ${kpi('Active Files', active, '⚡', 'Not closed or rejected', "navigate('leads')")}
+      ${kpi('Disbursed', disbursed, '✅', 'Disbursement stage/status', "gotoReport('disbursed')")}
+      ${kpi('Compliance Pending', compliancePending, '🧾', 'Post-disbursement pending', "gotoReport('compliance')")}
+      ${kpi('Today Follow-ups', todayFollow, '📞', 'Due today', "gotoReport('followups')")}
+      ${kpi('Overdue Follow-ups', overdue, '⏰', 'Past due date', "gotoReport('followups')")}
+      ${kpi('Rejected', leads.filter(l => l.status === 'Rejected').length, '🚫', 'Rejected files', "navigate('leads')")}
+      ${kpi('Products', activeItems('products').length, '🏦', 'Active loan products', can('manageAdmin') ? "navigate('admin')" : '')}
     </div>
     <div class="grid grid-2" style="margin-top:16px">
       <div class="card">
@@ -476,8 +486,15 @@ function renderDashboard() {
     </div>`;
 }
 
-function kpi(label, value, icon, desc) {
-  return `<div class="card kpi"><div><div class="muted small">${escapeHtml(label)}</div><div class="big-number">${value}</div><div class="muted small">${escapeHtml(desc)}</div></div><div class="bubble">${icon}</div></div>`;
+function kpi(label, value, icon, desc, onclick = '') {
+  const clickable = onclick ? ` kpi-click" role="button" tabindex="0" onclick="${onclick}` : '';
+  return `<div class="card kpi${clickable}"><div><div class="muted small">${escapeHtml(label)}</div><div class="big-number">${value}</div><div class="muted small">${escapeHtml(desc)}</div></div><div class="bubble">${icon}</div></div>`;
+}
+
+function gotoReport(type) {
+  if (!can('viewReports')) return navigate('leads');
+  reportType = type;
+  navigate('reports');
 }
 
 function renderMiniLeadList(leads) {
@@ -492,28 +509,30 @@ function renderLeads() {
         <div><h2>Lead & File Register</h2><p class="muted small">Search, filter, open file details or create a new lead.</p></div>
         <div class="btn-row">${can('exportData') ? `<button class="btn" onclick="exportLeadsCSV()">Export CSV</button>` : ''}${can('createLead') ? `<button class="btn primary" onclick="openLeadModal()">+ New Lead</button>` : ''}</div>
       </div>
-      <div class="grid grid-4" style="margin-bottom:14px">
-        <input class="input" id="leadSearch" placeholder="Search customer/mobile" oninput="filterLeadTable()" />
+      <div class="filter-bar">
+        <div class="search-wrap"><span class="search-ico">🔍</span><input class="input" id="leadSearch" placeholder="Search customer, mobile, valuer, advocate…" oninput="filterLeadTable()" /></div>
         <select class="select" id="stageFilter" onchange="filterLeadTable()"><option value="">All stages</option>${activeItems('stages').map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}</select>
         <select class="select" id="productFilter" onchange="filterLeadTable()"><option value="">All products</option>${activeItems('products').map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select>
         <select class="select" id="statusFilter" onchange="filterLeadTable()"><option value="">All status</option>${['New','Active','Pending','Disbursed','Completed','Rejected','Closed'].map(s => `<option>${s}</option>`).join('')}</select>
+        <button class="btn ghost" onclick="clearLeadFilters()" title="Clear all filters">Clear</button>
       </div>
+      <div class="result-count"><span id="leadCount">${leads.length}</span> file${leads.length === 1 ? '' : 's'} shown</div>
       <div id="leadTable">${renderLeadTable(leads)}</div>
     </div>`;
 }
 
 function renderLeadTable(leads) {
   if (!leads.length) return `<div class="empty">No leads found. Create your first lead.</div>`;
-  return `<div class="table-wrap"><table><thead><tr><th>Customer</th><th>Product</th><th>Stage</th><th>Status</th><th>Assigned</th><th>Follow-up</th><th>Updated</th><th>Action</th></tr></thead><tbody>
+  return `<div class="table-wrap cards"><table><thead><tr><th>Customer</th><th>Product</th><th>Stage</th><th>Status</th><th>Assigned</th><th>Follow-up</th><th>Updated</th><th>Action</th></tr></thead><tbody>
     ${leads.map(l => `<tr data-search="${escapeHtml((l.customerName + ' ' + l.mobile + ' ' + productName(l.productId) + ' ' + sourceDetail(l) + ' ' + (l.processingTeamName || '') + ' ' + (l.valuerName || '') + ' ' + (l.advocateName || '') + ' ' + (l.psirPersonName || '')).toLowerCase())}" data-stage="${l.currentStageId}" data-product="${l.productId}" data-status="${l.status}">
-      <td><b>${escapeHtml(l.customerName)}</b><div class="muted small">${escapeHtml(l.mobile)}${l.alternateMobile ? ' / ' + escapeHtml(l.alternateMobile) : ''}</div></td>
-      <td>${escapeHtml(productName(l.productId))}<div class="muted small">${escapeHtml(sourceName(l.leadSourceId))}: ${escapeHtml(sourceDetail(l))}</div></td>
-      <td><span class="badge blue">${escapeHtml(stageName(l.currentStageId))}</span></td>
-      <td>${statusBadge(l.status)}${l.deleteStatus === 'pending' ? '<br><span class="badge amber">Delete Requested</span>' : l.deleteStatus === 'rejected' ? '<br><span class="badge gray">Delete Rejected</span>' : ''}</td>
-      <td>${escapeHtml(userName(l.assignedTo))}<div class="muted small">${escapeHtml(branchName(l.branchId))}</div></td>
-      <td>${l.nextFollowUpDate ? `<span class="badge ${isOverdue(l.nextFollowUpDate) ? 'red' : l.nextFollowUpDate === today() ? 'amber' : 'gray'}">${escapeHtml(l.nextFollowUpDate)}</span>` : '-'}</td>
-      <td>${fmtDate(l.updatedAt || l.createdAt)}</td>
-      <td><div class="btn-row"><button class="btn" onclick="navigate('lead','${l.id}')">Open</button>${leadDeleteAction(l)}</div></td>
+      <td data-label="Customer"><b>${escapeHtml(l.customerName)}</b><div class="muted small">${escapeHtml(l.mobile)}${l.alternateMobile ? ' / ' + escapeHtml(l.alternateMobile) : ''}</div></td>
+      <td data-label="Product">${escapeHtml(productName(l.productId))}<div class="muted small">${escapeHtml(sourceName(l.leadSourceId))}: ${escapeHtml(sourceDetail(l))}</div></td>
+      <td data-label="Stage"><span class="badge blue">${escapeHtml(stageName(l.currentStageId))}</span></td>
+      <td data-label="Status">${statusBadge(l.status)}${l.deleteStatus === 'pending' ? '<br><span class="badge amber">Delete Requested</span>' : l.deleteStatus === 'rejected' ? '<br><span class="badge gray">Delete Rejected</span>' : ''}</td>
+      <td data-label="Assigned">${escapeHtml(userName(l.assignedTo))}<div class="muted small">${escapeHtml(branchName(l.branchId))}</div></td>
+      <td data-label="Follow-up">${l.nextFollowUpDate ? `<span class="badge ${isOverdue(l.nextFollowUpDate) ? 'red' : l.nextFollowUpDate === today() ? 'amber' : 'gray'}">${escapeHtml(l.nextFollowUpDate)}</span>` : '-'}</td>
+      <td data-label="Updated">${fmtDate(l.updatedAt || l.createdAt)}</td>
+      <td data-label="Action"><div class="btn-row"><button class="btn" onclick="navigate('lead','${l.id}')">Open</button>${leadDeleteAction(l)}</div></td>
     </tr>`).join('')}
   </tbody></table></div>`;
 }
@@ -523,10 +542,23 @@ function filterLeadTable() {
   const st = $('#stageFilter')?.value || '';
   const prd = $('#productFilter')?.value || '';
   const status = $('#statusFilter')?.value || '';
+  let shown = 0;
   $$('#leadTable tbody tr').forEach(row => {
     const match = (!q || row.dataset.search.includes(q)) && (!st || row.dataset.stage === st) && (!prd || row.dataset.product === prd) && (!status || row.dataset.status === status);
     row.style.display = match ? '' : 'none';
+    if (match) shown++;
   });
+  const countEl = $('#leadCount');
+  if (countEl) {
+    countEl.textContent = shown;
+    countEl.parentElement.innerHTML = `<span id="leadCount">${shown}</span> file${shown === 1 ? '' : 's'} shown`;
+  }
+}
+
+function clearLeadFilters() {
+  if ($('#leadSearch')) $('#leadSearch').value = '';
+  ['#stageFilter', '#productFilter', '#statusFilter'].forEach(sel => { if ($(sel)) $(sel).value = ''; });
+  filterLeadTable();
 }
 
 function openLeadModal(id = null) {
@@ -1014,10 +1046,10 @@ function reportRows() {
 function renderReportTable() {
   const rows = reportRows();
   if (!rows.length) return `<div class="empty">No data for selected report.</div>`;
-  return `<div class="table-wrap"><table><thead><tr><th>Customer</th><th>Mobile</th><th>Product</th><th>Branch</th><th>Assigned</th><th>Stage</th><th>Source</th><th>Processing</th><th>Valuer</th><th>Advocate</th><th>PSIR</th><th>Status</th><th>Follow-up</th><th>Disbursed</th><th>Compliance</th></tr></thead><tbody>${rows.map(l => {
+  return `<div class="table-wrap cards"><table><thead><tr><th>Customer</th><th>Mobile</th><th>Product</th><th>Branch</th><th>Assigned</th><th>Stage</th><th>Source</th><th>Processing</th><th>Valuer</th><th>Advocate</th><th>PSIR</th><th>Status</th><th>Follow-up</th><th>Disbursed</th><th>Compliance</th></tr></thead><tbody>${rows.map(l => {
     const disb = db.disbursements.find(d => d.leadId === l.id);
     const comp = db.complianceRecords.filter(c => c.leadId === l.id);
-    return `<tr><td><b>${escapeHtml(l.customerName)}</b></td><td>${escapeHtml(l.mobile)}</td><td>${escapeHtml(productName(l.productId))}</td><td>${escapeHtml(branchName(l.branchId))}</td><td>${escapeHtml(userName(l.assignedTo))}</td><td>${escapeHtml(stageName(l.currentStageId))}</td><td>${escapeHtml(sourceName(l.leadSourceId))}<div class="muted small">${escapeHtml(sourceDetail(l))}</div></td><td>${escapeHtml(l.processingTeamName || '-')}</td><td>${escapeHtml(l.valuerName || '-')}</td><td>${escapeHtml(l.advocateName || '-')}</td><td>${escapeHtml(l.psirPersonName || '-')}</td><td>${statusBadge(l.status)}${l.deleteStatus === 'pending' ? '<br><span class="badge amber">Delete Requested</span>' : l.deleteStatus === 'rejected' ? '<br><span class="badge gray">Delete Rejected</span>' : ''}</td><td>${escapeHtml(l.nextFollowUpDate || '-')}</td><td>${disb ? (db.settings.currency || '₹') + ' ' + Number(disb.disbursedAmount || 0).toLocaleString() : '-'}</td><td>${comp.length ? comp.filter(c => c.completed).length + '/' + comp.length : '-'}</td></tr>`;
+    return `<tr><td data-label="Customer"><b>${escapeHtml(l.customerName)}</b></td><td data-label="Mobile">${escapeHtml(l.mobile)}</td><td data-label="Product">${escapeHtml(productName(l.productId))}</td><td data-label="Branch">${escapeHtml(branchName(l.branchId))}</td><td data-label="Assigned">${escapeHtml(userName(l.assignedTo))}</td><td data-label="Stage">${escapeHtml(stageName(l.currentStageId))}</td><td data-label="Source">${escapeHtml(sourceName(l.leadSourceId))}<div class="muted small">${escapeHtml(sourceDetail(l))}</div></td><td data-label="Processing">${escapeHtml(l.processingTeamName || '-')}</td><td data-label="Valuer">${escapeHtml(l.valuerName || '-')}</td><td data-label="Advocate">${escapeHtml(l.advocateName || '-')}</td><td data-label="PSIR">${escapeHtml(l.psirPersonName || '-')}</td><td data-label="Status">${statusBadge(l.status)}${l.deleteStatus === 'pending' ? '<br><span class="badge amber">Delete Requested</span>' : l.deleteStatus === 'rejected' ? '<br><span class="badge gray">Delete Rejected</span>' : ''}</td><td data-label="Follow-up">${escapeHtml(l.nextFollowUpDate || '-')}</td><td data-label="Disbursed">${disb ? (db.settings.currency || '₹') + ' ' + Number(disb.disbursedAmount || 0).toLocaleString() : '-'}</td><td data-label="Compliance">${comp.length ? comp.filter(c => c.completed).length + '/' + comp.length : '-'}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
@@ -1271,4 +1303,4 @@ if ('serviceWorker' in navigator) {
 render();
 
 // Expose functions for inline handlers
-Object.assign(window, { navigate, login, logout, installApp, refreshApp, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });
+Object.assign(window, { navigate, login, logout, installApp, refreshApp, toggleSidebar, gotoReport, clearLeadFilters, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });
