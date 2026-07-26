@@ -226,7 +226,7 @@ tr:hover td { background:#f8fafc; }
 .kpi-click:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
 
 /* Files filter bar + result count */
-.filter-bar { display:grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap:10px; margin-bottom:12px; align-items:center; }
+.filter-bar { display:grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; gap:10px; margin-bottom:12px; align-items:center; }
 .search-wrap { position:relative; }
 .search-wrap .search-ico { position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; opacity:.55; pointer-events:none; }
 .search-wrap .input { padding-left:34px; }
