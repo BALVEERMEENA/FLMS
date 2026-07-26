@@ -68,10 +68,19 @@ function seedDB() {
   const managerId = uid('usr');
   const branchId = uid('br');
   const products = [
-    { id: uid('prd'), name: 'Gold Loan', active: true, createdAt },
-    { id: uid('prd'), name: 'Personal Loan', active: true, createdAt },
-    { id: uid('prd'), name: 'Business Loan', active: true, createdAt },
-    { id: uid('prd'), name: 'Home Loan', active: true, createdAt }
+    { id: uid('prd'), name: 'Gold Loan', category: 'advance', active: true, createdAt },
+    { id: uid('prd'), name: 'Personal Loan', category: 'advance', active: true, createdAt },
+    { id: uid('prd'), name: 'Business Loan', category: 'advance', active: true, createdAt },
+    { id: uid('prd'), name: 'Home Loan', category: 'advance', active: true, createdAt },
+    { id: uid('prd'), name: 'Fixed Deposit', category: 'deposit', active: true, createdAt },
+    { id: uid('prd'), name: 'Recurring Deposit', category: 'deposit', active: true, createdAt },
+    { id: uid('prd'), name: 'Savings Account', category: 'deposit', active: true, createdAt },
+    { id: uid('prd'), name: 'Current Account', category: 'deposit', active: true, createdAt },
+    { id: uid('prd'), name: 'Mutual Fund', category: 'wms', active: true, createdAt },
+    { id: uid('prd'), name: 'Life Insurance', category: 'wms', active: true, createdAt },
+    { id: uid('prd'), name: 'General Insurance', category: 'wms', active: true, createdAt },
+    { id: uid('prd'), name: 'Bonds / NCD', category: 'wms', active: true, createdAt },
+    { id: uid('prd'), name: 'Demat & Trading', category: 'wms', active: true, createdAt }
   ];
   const stages = [
     'Lead Generated', 'Customer Contacted', 'Interested', 'Document Collection', 'Login / File Created',
@@ -155,6 +164,20 @@ function migrateDB(database) {
     u.permissions = { ...defaultPermissions(u.role), ...(u.permissions || {}) };
   });
 
+  // Products get a category (advance / deposit / wms); seed standard
+  // deposit and WMS products so those lead types work out of the box.
+  database.products = Array.isArray(database.products) ? database.products : [];
+  database.products.forEach(p => { p.category ??= 'advance'; });
+  const standardProducts = [
+    ['Fixed Deposit', 'deposit'], ['Recurring Deposit', 'deposit'], ['Savings Account', 'deposit'], ['Current Account', 'deposit'],
+    ['Mutual Fund', 'wms'], ['Life Insurance', 'wms'], ['General Insurance', 'wms'], ['Bonds / NCD', 'wms'], ['Demat & Trading', 'wms']
+  ];
+  standardProducts.forEach(([name, category]) => {
+    if (!database.products.some(p => String(p.name).toLowerCase() === name.toLowerCase())) {
+      database.products.push({ id: uid('prd'), name, category, active: true, createdAt });
+    }
+  });
+
   database.leads = Array.isArray(database.leads) ? database.leads : [];
   database.leads.forEach(l => {
     l.branchEmployeeName ??= '';
@@ -165,6 +188,19 @@ function migrateDB(database) {
     l.valuerName ??= '';
     l.advocateName ??= '';
     l.psirPersonName ??= '';
+    l.subProduct ??= '';
+    l.leadType ??= 'advance';
+    // Deposit standard params
+    l.depositAmount ??= '';
+    l.depositTenure ??= '';
+    l.interestRate ??= '';
+    l.maturityDate ??= '';
+    l.nomineeName ??= '';
+    // WMS standard params
+    l.investmentAmount ??= '';
+    l.investmentMode ??= '';
+    l.riskProfile ??= '';
+    l.folioNumber ??= '';
     l.deleteStatus ??= l.isDeleted ? 'approved' : 'none';
     l.deleteRequestedBy ??= '';
     l.deleteRequestedAt ??= '';
@@ -238,6 +274,17 @@ function getById(collection, id) { return db[collection].find(x => x.id === id);
 function activeItems(collection) { return db[collection].filter(x => x.active !== false).sort((a, b) => (a.order || 0) - (b.order || 0) || String(a.name).localeCompare(String(b.name))); }
 function stageName(id) { return getById('stages', id)?.name || '-'; }
 function productName(id) { return getById('products', id)?.name || '-'; }
+function leadTypeBadge(l) {
+  const map = { advance: ['blue', 'Advance'], deposit: ['green', 'Deposit'], wms: ['purple', 'WMS'] };
+  const [cls, label] = map[l.leadType || 'advance'] || map.advance;
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+function leadAmount(l) {
+  const t = l.leadType || 'advance';
+  if (t === 'deposit') return Number(l.depositAmount || 0);
+  if (t === 'wms') return Number(l.investmentAmount || 0);
+  return Number(l.loanAmount || 0);
+}
 function branchName(id) { return getById('branches', id)?.name || '-'; }
 function userName(id) { return getById('users', id)?.name || '-'; }
 function sourceName(id) { return getById('leadSources', id)?.name || '-'; }
@@ -574,6 +621,7 @@ function renderLeads() {
       </div>
       <div class="filter-bar">
         <div class="search-wrap"><span class="search-ico">🔍</span><input class="input" id="leadSearch" placeholder="Search customer, mobile, valuer, advocate…" oninput="filterLeadTable()" /></div>
+        <select class="select" id="typeFilter" onchange="filterLeadTable()"><option value="">All types</option>${LEAD_TYPES.map(([v, l]) => `<option value="${v}">${escapeHtml(l)}</option>`).join('')}</select>
         <select class="select" id="stageFilter" onchange="filterLeadTable()"><option value="">All stages</option>${activeItems('stages').map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}</select>
         <select class="select" id="productFilter" onchange="filterLeadTable()"><option value="">All products</option>${activeItems('products').map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select>
         <select class="select" id="statusFilter" onchange="filterLeadTable()"><option value="">All status</option>${['New','Active','Pending','Disbursed','Completed','Rejected','Closed'].map(s => `<option>${s}</option>`).join('')}</select>
@@ -587,9 +635,9 @@ function renderLeads() {
 function renderLeadTable(leads) {
   if (!leads.length) return `<div class="empty">No leads found. Create your first lead.</div>`;
   return `<div class="table-wrap cards"><table><thead><tr><th>Customer</th><th>Product</th><th>Stage</th><th>Status</th><th>Assigned</th><th>Follow-up</th><th>Updated</th><th>Action</th></tr></thead><tbody>
-    ${leads.map(l => `<tr data-search="${escapeHtml((l.customerName + ' ' + l.mobile + ' ' + productName(l.productId) + ' ' + (l.subProduct || '') + ' ' + sourceDetail(l) + ' ' + (l.processingTeamName || '') + ' ' + (l.valuerName || '') + ' ' + (l.advocateName || '') + ' ' + (l.psirPersonName || '')).toLowerCase())}" data-stage="${l.currentStageId}" data-product="${l.productId}" data-status="${l.status}">
+    ${leads.map(l => `<tr data-search="${escapeHtml((l.customerName + ' ' + l.mobile + ' ' + productName(l.productId) + ' ' + (l.subProduct || '') + ' ' + sourceDetail(l) + ' ' + (l.processingTeamName || '') + ' ' + (l.valuerName || '') + ' ' + (l.advocateName || '') + ' ' + (l.psirPersonName || '')).toLowerCase())}" data-stage="${l.currentStageId}" data-product="${l.productId}" data-status="${l.status}" data-leadtype="${l.leadType || 'advance'}">
       <td data-label="Customer"><b>${escapeHtml(l.customerName)}</b><div class="muted small">${escapeHtml(l.mobile)}${l.alternateMobile ? ' / ' + escapeHtml(l.alternateMobile) : ''}</div></td>
-      <td data-label="Product">${escapeHtml(productName(l.productId))}${l.subProduct ? ` <span class="badge gray">${escapeHtml(l.subProduct)}</span>` : ''}<div class="muted small">${escapeHtml(sourceName(l.leadSourceId))}: ${escapeHtml(sourceDetail(l))}</div></td>
+      <td data-label="Product"><div style="margin-bottom:4px">${leadTypeBadge(l)}</div>${escapeHtml(productName(l.productId))}${l.subProduct ? ` <span class="badge gray">${escapeHtml(l.subProduct)}</span>` : ''}<div class="muted small">${escapeHtml(sourceName(l.leadSourceId))}: ${escapeHtml(sourceDetail(l))}</div></td>
       <td data-label="Stage"><span class="badge blue">${escapeHtml(stageName(l.currentStageId))}</span></td>
       <td data-label="Status">${statusBadge(l.status)}${l.deleteStatus === 'pending' ? '<br><span class="badge amber">Delete Requested</span>' : l.deleteStatus === 'rejected' ? '<br><span class="badge gray">Delete Rejected</span>' : ''}</td>
       <td data-label="Assigned">${escapeHtml(userName(l.assignedTo))}<div class="muted small">${escapeHtml(branchName(l.branchId))}</div></td>
@@ -602,12 +650,13 @@ function renderLeadTable(leads) {
 
 function filterLeadTable() {
   const q = ($('#leadSearch')?.value || '').toLowerCase();
+  const type = $('#typeFilter')?.value || '';
   const st = $('#stageFilter')?.value || '';
   const prd = $('#productFilter')?.value || '';
   const status = $('#statusFilter')?.value || '';
   let shown = 0;
   $$('#leadTable tbody tr').forEach(row => {
-    const match = (!q || row.dataset.search.includes(q)) && (!st || row.dataset.stage === st) && (!prd || row.dataset.product === prd) && (!status || row.dataset.status === status);
+    const match = (!q || row.dataset.search.includes(q)) && (!type || row.dataset.leadtype === type) && (!st || row.dataset.stage === st) && (!prd || row.dataset.product === prd) && (!status || row.dataset.status === status);
     row.style.display = match ? '' : 'none';
     if (match) shown++;
   });
@@ -620,7 +669,7 @@ function filterLeadTable() {
 
 function clearLeadFilters() {
   if ($('#leadSearch')) $('#leadSearch').value = '';
-  ['#stageFilter', '#productFilter', '#statusFilter'].forEach(sel => { if ($(sel)) $(sel).value = ''; });
+  ['#typeFilter', '#stageFilter', '#productFilter', '#statusFilter'].forEach(sel => { if ($(sel)) $(sel).value = ''; });
   filterLeadTable();
 }
 
@@ -638,7 +687,8 @@ function openLeadModal(id = null) {
         ${field('Mobile Number','mobile','tel',lead?.mobile || '', true)}
         ${field('Alternate Mobile','alternateMobile','tel',lead?.alternateMobile || '')}
         ${selectField('Branch','branchId',activeItems('branches'),lead?.branchId || currentUser.branchId,true)}
-        ${selectField('Product','productId',activeItems('products'),lead?.productId || '',true)}
+        ${leadTypeField(lead?.leadType || 'advance')}
+        ${productField(lead?.leadType || 'advance', lead?.productId || '')}
         ${subProductField(lead?.subProduct || '')}
         ${sourceSelectField(lead?.leadSourceId || '')}
         ${sourceDetailInput('Branch Employee Name','branchEmployeeName','branch',lead?.branchEmployeeName || '')}
@@ -646,24 +696,49 @@ function openLeadModal(id = null) {
         ${sourceDetailInput('DSA Name','dsaName','dsa',lead?.dsaName || '')}
         ${sourceDetailInput('Other Source Name','otherSourceName','other',lead?.otherSourceName || '')}
         ${can('assignLead') ? selectField('Assigned To','assignedTo',db.users.filter(u => u.active !== false),lead?.assignedTo || currentUser.id,true) : `<input type="hidden" name="assignedTo" value="${currentUser.id}">`}
-        ${field('Loan Amount','loanAmount','number',lead?.loanAmount || '')}
         ${field('Next Follow-up Date','nextFollowUpDate','date',lead?.nextFollowUpDate || '')}
         ${selectSimple('Priority','priority',['Normal','High','Urgent'],lead?.priority || 'Normal')}
         ${lead ? selectField('Current Stage','currentStageId',activeItems('stages'),lead.currentStageId,true) : `<input type="hidden" name="currentStageId" value="${firstStage?.id || ''}">`}
         ${selectSimple('Status','status',['New','Active','Pending','Disbursed','Completed','Rejected','Closed'],lead?.status || 'New')}
       </div><br>
-      <div class="section-title">Processing & Critical Monitoring Persons</div>
-      <div class="form-grid">
-        ${field('Processing Team Name','processingTeamName','text',lead?.processingTeamName || '', true)}
-        ${field('Valuer Name','valuerName','text',lead?.valuerName || '', true)}
-        ${field('Advocate Name','advocateName','text',lead?.advocateName || '', true)}
-        ${field('PSIR Person Name','psirPersonName','text',lead?.psirPersonName || '', true)}
-      </div><br>
+
+      <div class="lead-type-group" data-lead-type="advance">
+        <div class="section-title">Loan / Advance Details</div>
+        <div class="form-grid">
+          ${field('Loan Amount','loanAmount','number',lead?.loanAmount || '')}
+          ${field('Processing Team Name','processingTeamName','text',lead?.processingTeamName || '', true)}
+          ${field('Valuer Name','valuerName','text',lead?.valuerName || '', true)}
+          ${field('Advocate Name','advocateName','text',lead?.advocateName || '', true)}
+          ${field('PSIR Person Name','psirPersonName','text',lead?.psirPersonName || '', true)}
+        </div><br>
+      </div>
+
+      <div class="lead-type-group" data-lead-type="deposit">
+        <div class="section-title">Deposit Details</div>
+        <div class="form-grid">
+          ${field('Deposit Amount','depositAmount','number',lead?.depositAmount || '')}
+          ${field('Tenure (Months)','depositTenure','number',lead?.depositTenure || '')}
+          ${field('Interest Rate (%)','interestRate','number',lead?.interestRate || '')}
+          ${field('Maturity Date','maturityDate','date',lead?.maturityDate || '')}
+          ${field('Nominee Name','nomineeName','text',lead?.nomineeName || '')}
+        </div><br>
+      </div>
+
+      <div class="lead-type-group" data-lead-type="wms">
+        <div class="section-title">Wealth Management Details</div>
+        <div class="form-grid">
+          ${field('Investment Amount','investmentAmount','number',lead?.investmentAmount || '')}
+          ${selectSimple('Investment Mode','investmentMode',['Lumpsum','SIP','STP','SWP'],lead?.investmentMode || 'Lumpsum')}
+          ${selectSimple('Risk Profile','riskProfile',['Conservative','Moderate','Aggressive'],lead?.riskProfile || 'Moderate')}
+          ${field('Folio / Account No','folioNumber','text',lead?.folioNumber || '')}
+        </div><br>
+      </div>
       <div class="field"><label>Address</label><textarea class="textarea" name="address">${escapeHtml(lead?.address || '')}</textarea></div><br>
       <div class="field"><label>Remarks</label><textarea class="textarea" name="remarks">${escapeHtml(lead?.remarks || '')}</textarea></div><br>
       <div class="btn-row"><button class="btn primary" type="submit">Save Lead</button><button class="btn" type="button" onclick="removeModal()">Cancel</button></div>
     </form></div>`;
   document.body.insertAdjacentHTML('beforeend', html);
+  updateLeadTypeFields();
   updateSourceFields();
 }
 
@@ -687,8 +762,35 @@ function updateSourceFields() {
   });
 }
 function field(label, name, type = 'text', value = '', required = false) {
-  return `<div class="field"><label>${escapeHtml(label)}</label><input class="input" name="${name}" type="${type}" value="${escapeHtml(value)}" ${required ? 'required' : ''}></div>`;
+  return `<div class="field"><label>${escapeHtml(label)}</label><input class="input" name="${name}" type="${type}" value="${escapeHtml(value)}" ${required ? 'required data-req="1"' : ''}></div>`;
 }
+const LEAD_TYPES = [['advance', 'Advance / Loan'], ['deposit', 'Deposit'], ['wms', 'WMS / Wealth']];
+function leadTypeLabel(type) { return (LEAD_TYPES.find(t => t[0] === type) || LEAD_TYPES[0])[1]; }
+function productsForType(type) { return activeItems('products').filter(p => (p.category || 'advance') === type); }
+function productOptionsHtml(opts, value) {
+  return `<option value="">Select</option>` + opts.map(p => `<option value="${p.id}" ${p.id === value ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
+}
+function leadTypeField(value = 'advance') {
+  return `<div class="field"><label>Lead Type</label><select class="select" name="leadType" onchange="updateLeadTypeFields()">${LEAD_TYPES.map(([v, l]) => `<option value="${v}" ${v === value ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select></div>`;
+}
+function productField(type = 'advance', value = '') {
+  return `<div class="field"><label>Product</label><select class="select" name="productId" id="leadProduct" required>${productOptionsHtml(productsForType(type), value)}</select></div>`;
+}
+function updateLeadTypeFields() {
+  const type = document.querySelector('select[name="leadType"]')?.value || 'advance';
+  document.querySelectorAll('.lead-type-group').forEach(group => {
+    const show = group.dataset.leadType === type;
+    group.style.display = show ? '' : 'none';
+    group.querySelectorAll('input, select, textarea').forEach(inp => { inp.required = show && inp.dataset.req === '1'; });
+  });
+  const prod = document.getElementById('leadProduct');
+  if (prod) {
+    const opts = productsForType(type);
+    const keep = opts.some(p => p.id === prod.value) ? prod.value : '';
+    prod.innerHTML = productOptionsHtml(opts, keep);
+  }
+}
+
 function subProductOptions() {
   return [...new Set(db.leads.map(l => (l.subProduct || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
@@ -812,9 +914,10 @@ function renderLeadDetail(id) {
     <div class="grid grid-3">
       <div class="card"><div class="muted small">Customer</div><h2>${escapeHtml(lead.customerName)}</h2><p class="muted">${escapeHtml(lead.mobile)}${lead.alternateMobile ? ' / ' + escapeHtml(lead.alternateMobile) : ''}</p>${statusBadge(lead.status)}</div>
       <div class="card"><div class="muted small">Current Stage</div><h2>${escapeHtml(stageName(lead.currentStageId))}</h2><p class="muted">Assigned: ${escapeHtml(userName(lead.assignedTo))}</p></div>
-      <div class="card"><div class="muted small">Product & Amount</div><h2>${escapeHtml(productName(lead.productId))}</h2>${lead.subProduct ? `<p class="muted small">Sub Product: <b>${escapeHtml(lead.subProduct)}</b></p>` : ''}<p class="muted">${db.settings.currency || '₹'} ${Number(lead.loanAmount || 0).toLocaleString()}</p></div>
+      <div class="card"><div class="muted small">Product & Amount</div><div style="margin-bottom:4px">${leadTypeBadge(lead)}</div><h2>${escapeHtml(productName(lead.productId))}</h2>${lead.subProduct ? `<p class="muted small">Sub Product: <b>${escapeHtml(lead.subProduct)}</b></p>` : ''}<p class="muted">${db.settings.currency || '₹'} ${leadAmount(lead).toLocaleString()}</p></div>
     </div>
-    ${renderMonitoringSummary(lead)}
+    ${renderLeadTypeDetails(lead)}
+    ${(lead.leadType || 'advance') === 'advance' ? renderMonitoringSummary(lead) : ''}
     <div class="grid grid-2" style="margin-top:16px">
       <div class="card">
         <div class="card-title"><h2>Move File Stage</h2></div>
@@ -865,6 +968,31 @@ function renderLeadDetail(id) {
     </div>`;
 }
 
+function infoRow(label, value) {
+  return `<div class="info-row"><span>${escapeHtml(label)}</span><b>${escapeHtml(value || '-')}</b></div>`;
+}
+function renderLeadTypeDetails(lead) {
+  const type = lead.leadType || 'advance';
+  const cur = db.settings.currency || '₹';
+  if (type === 'deposit') {
+    return `<div class="card" style="margin-top:16px"><div class="card-title"><h2>Deposit Details</h2></div><div class="mini-table">
+      ${infoRow('Deposit Amount', lead.depositAmount ? cur + ' ' + Number(lead.depositAmount).toLocaleString() : '-')}
+      ${infoRow('Tenure (Months)', lead.depositTenure)}
+      ${infoRow('Interest Rate (%)', lead.interestRate)}
+      ${infoRow('Maturity Date', lead.maturityDate)}
+      ${infoRow('Nominee Name', lead.nomineeName)}
+    </div></div>`;
+  }
+  if (type === 'wms') {
+    return `<div class="card" style="margin-top:16px"><div class="card-title"><h2>Wealth Management Details</h2></div><div class="mini-table">
+      ${infoRow('Investment Amount', lead.investmentAmount ? cur + ' ' + Number(lead.investmentAmount).toLocaleString() : '-')}
+      ${infoRow('Investment Mode', lead.investmentMode)}
+      ${infoRow('Risk Profile', lead.riskProfile)}
+      ${infoRow('Folio / Account No', lead.folioNumber)}
+    </div></div>`;
+  }
+  return '';
+}
 function renderMonitoringSummary(lead) {
   const legal = stageDateSummary(lead.id, 'Legal');
   const valuation = stageDateSummary(lead.id, 'Valuation');
@@ -965,7 +1093,7 @@ function renderAdminTab() {
   if (adminTab === 'complianceParams') return renderGenericAdmin('complianceParams', ['name','active'], 'Compliance Parameter');
   if (adminTab === 'pendingReasons') return renderGenericAdmin('pendingReasons', ['name','active'], 'Pending Reason');
   if (adminTab === 'branches') return renderGenericAdmin('branches', ['name','active'], 'Branch');
-  if (adminTab === 'products') return renderGenericAdmin('products', ['name','active'], 'Product');
+  if (adminTab === 'products') return renderGenericAdmin('products', ['name','category','active'], 'Product');
   if (adminTab === 'leadSources') return renderGenericAdmin('leadSources', ['name','active'], 'Lead Source');
 }
 
@@ -1043,6 +1171,7 @@ function renderCell(row, c) {
   if (c === 'active') return row.active ? '<span class="badge green">Active</span>' : '<span class="badge red">Inactive</span>';
   if (c === 'terminal') return row.terminal ? '<span class="badge purple">Terminal</span>' : '<span class="badge gray">Normal</span>';
   if (c === 'productId') return row.productId ? productName(row.productId) : 'All Products';
+  if (c === 'category') return `<span class="badge ${{advance:'blue',deposit:'green',wms:'purple'}[row.category || 'advance']}">${escapeHtml(leadTypeLabel(row.category || 'advance'))}</span>`;
   if (typeof row[c] === 'boolean') return row[c] ? 'Yes' : 'No';
   return escapeHtml(row[c] ?? '-');
 }
@@ -1051,6 +1180,7 @@ function openGenericModal(collection, label, id = '') {
   const r = id ? getById(collection, id) : null;
   const html = `<div class="modal-backdrop" onclick="closeModal(event)"><form class="modal" onclick="event.stopPropagation()" onsubmit="saveGeneric(event,'${collection}','${id}')"><div class="modal-head"><h2>${id ? 'Edit' : 'Add'} ${escapeHtml(label)}</h2><button type="button" class="close" onclick="removeModal()">×</button></div><div class="form-grid">
     ${field('Name','name','text',r?.name || '',true)}
+    ${collection === 'products' ? `<div class="field"><label>Category</label><select class="select" name="category">${LEAD_TYPES.map(([v, l]) => `<option value="${v}" ${v === (r?.category || 'advance') ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select></div>` : ''}
     ${collection === 'stages' ? field('Order','order','number',r?.order || activeItems('stages').length + 1,true) : ''}
     ${collection === 'stages' ? selectSimple('Terminal Stage','terminal',['false','true'],String(r?.terminal ?? false)) : ''}
     ${selectSimple('Status','active',['true','false'],String(r?.active ?? true))}
@@ -1298,8 +1428,18 @@ function leadExportRows(leads = visibleLeads()) {
       Mobile: l.mobile,
       Alternate: l.alternateMobile,
       Branch: branchName(l.branchId),
+      LeadType: leadTypeLabel(l.leadType || 'advance'),
       Product: productName(l.productId),
       SubProduct: l.subProduct || '',
+      DepositAmount: l.depositAmount || '',
+      DepositTenureMonths: l.depositTenure || '',
+      InterestRate: l.interestRate || '',
+      MaturityDate: l.maturityDate || '',
+      NomineeName: l.nomineeName || '',
+      InvestmentAmount: l.investmentAmount || '',
+      InvestmentMode: l.investmentMode || '',
+      RiskProfile: l.riskProfile || '',
+      FolioNumber: l.folioNumber || '',
       Source: sourceName(l.leadSourceId),
       SourceDetailType: sourceDetailLabel(l),
       SourceDetailName: sourceDetail(l),
@@ -1439,4 +1579,4 @@ if ('serviceWorker' in navigator) {
 render();
 
 // Expose functions for inline handlers
-Object.assign(window, { navigate, login, logout, installApp, refreshApp, toggleSidebar, gotoReport, clearLeadFilters, openInstallHelp, dismissInstallBanner, menuAction, openDrawer, closeDrawer, drawerBackdrop, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });
+Object.assign(window, { navigate, login, logout, installApp, refreshApp, toggleSidebar, gotoReport, clearLeadFilters, openInstallHelp, dismissInstallBanner, menuAction, openDrawer, closeDrawer, drawerBackdrop, openLeadModal, updateSourceFields, updateLeadTypeFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });
