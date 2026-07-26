@@ -302,6 +302,7 @@ window.addEventListener('hashchange', () => {
 function pageTitle() {
   const titles = {
     dashboard: ['Dashboard', 'Live file movement, pending work, disbursement and compliance summary'],
+    emi: ['EMI Calculator', 'Estimate monthly instalment, total interest and amortization schedule'],
     leads: ['Leads & Files', 'Create leads and move files from generation to disbursement'],
     lead: ['File Details', 'Timeline, documents, disbursement and compliance'],
     admin: ['Admin Setup', 'Configure users, branches, products, stages and parameters'],
@@ -316,6 +317,7 @@ function navButtons() {
   const items = [
     ['dashboard', '📊', 'Dashboard'],
     ['leads', '📁', 'Files'],
+    ['emi', '🧮', 'EMI Calc'],
     ...(can('viewReports') ? [['reports', '📈', 'Reports']] : []),
     ...(can('manageAdmin') ? [['admin', '⚙️', 'Admin']] : []),
     ...(can('viewAudit') ? [['audit', '🧾', 'Audit']] : []),
@@ -328,6 +330,7 @@ function mobileNavButtons() {
   const items = [
     ['dashboard', '📊', 'Home'],
     ['leads', '📁', 'Files'],
+    ['emi', '🧮', 'EMI'],
     ...(can('viewReports') ? [['reports', '📈', 'Reports']] : []),
     ...(can('manageAdmin') ? [['admin', '⚙️', 'Admin']] : [])
   ];
@@ -353,6 +356,7 @@ function renderShell(content) {
         <header class="topbar">
           <div><h1>${title}</h1><p>${subtitle}</p></div>
           <div class="btn-row">
+            <button class="btn" onclick="refreshApp()" title="Fetch the latest version">🔄 Update</button>
             <button class="btn" onclick="installApp()">Install App</button>
             <button class="btn" onclick="logout()">Logout</button>
           </div>
@@ -372,6 +376,7 @@ function render() {
   }
   let content = '';
   if (currentRoute === 'dashboard') content = renderDashboard();
+  else if (currentRoute === 'emi') content = renderEmi();
   else if (currentRoute === 'leads') content = renderLeads();
   else if (currentRoute === 'lead') content = renderLeadDetail(currentLeadId);
   else if (currentRoute === 'admin' && can('manageAdmin')) content = renderAdmin();
@@ -1016,6 +1021,119 @@ function renderBackup() {
   return `<div class="grid grid-2"><div class="card"><h2>Export Backup</h2><p class="muted">Download full local database JSON. Keep this safe.</p><button class="btn primary" onclick="exportBackup()">Download Backup JSON</button></div><div class="card"><h2>Import Backup</h2><p class="muted">Import a previously exported JSON backup. This will replace current browser data.</p><input class="input" type="file" id="backupFile" accept="application/json"><br><br><button class="btn danger" onclick="importBackup()">Import & Replace Data</button></div><div class="card"><h2>Storage Note</h2><p class="muted">This GitHub-only version saves data in browser localStorage. For shared branch/team usage across devices, connect Firebase Auth + Firestore.</p></div></div>`;
 }
 
+// ---------- EMI Calculator ----------
+function computeEmi(principal, annualRate, months) {
+  const P = Number(principal) || 0;
+  const n = Math.round(Number(months) || 0);
+  const r = (Number(annualRate) || 0) / 12 / 100;
+  if (P <= 0 || n <= 0) return null;
+  let emi;
+  if (r === 0) emi = P / n;
+  else emi = (P * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+  const totalPayment = emi * n;
+  const totalInterest = totalPayment - P;
+  return { P, n, r, emi, totalPayment, totalInterest };
+}
+
+function emiSchedule(res) {
+  const rows = [];
+  let balance = res.P;
+  for (let i = 1; i <= res.n; i++) {
+    const interest = balance * res.r;
+    let principalPaid = res.emi - interest;
+    if (i === res.n) principalPaid = balance; // absorb rounding in final row
+    balance = Math.max(0, balance - principalPaid);
+    rows.push({ month: i, principal: principalPaid, interest, payment: principalPaid + interest, balance });
+  }
+  return rows;
+}
+
+function fmtMoney(v) {
+  const cur = db.settings.currency || '₹';
+  return `${cur} ${Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function renderEmi() {
+  return `
+  <div class="grid grid-2">
+    <div class="card">
+      <div class="card-title"><h2>Loan Details</h2></div>
+      <div class="field"><label>Loan Amount (${escapeHtml(db.settings.currency || '₹')})</label>
+        <input class="input" id="emiAmount" type="number" min="0" step="1000" value="1000000" inputmode="decimal" oninput="calcEmi()" /></div><br>
+      <div class="field"><label>Annual Interest Rate (% per year)</label>
+        <input class="input" id="emiRate" type="number" min="0" step="0.05" value="9" inputmode="decimal" oninput="calcEmi()" /></div><br>
+      <div class="field"><label>Loan Tenure</label>
+        <div class="btn-row">
+          <input class="input" id="emiTenure" type="number" min="1" step="1" value="20" inputmode="numeric" style="flex:1" oninput="calcEmi()" />
+          <select class="input" id="emiTenureUnit" style="max-width:140px" onchange="calcEmi()">
+            <option value="years" selected>Years</option>
+            <option value="months">Months</option>
+          </select>
+        </div></div><br>
+      <p class="muted small">Values update automatically as you type.</p>
+    </div>
+    <div class="card" id="emiResult">${renderEmiResult(computeEmi(1000000, 9, 240))}</div>
+  </div>
+  <div class="card" id="emiScheduleCard" style="margin-top:16px">${renderEmiSchedule(computeEmi(1000000, 9, 240))}</div>
+  `;
+}
+
+function renderEmiResult(res) {
+  if (!res) return `<div class="empty">Enter loan amount, interest rate and tenure to see the EMI.</div>`;
+  return `
+    <div class="card-title"><h2>Result</h2></div>
+    <div class="emi-highlight">
+      <div class="muted small">Monthly EMI</div>
+      <div class="emi-emi">${fmtMoney(res.emi)}</div>
+    </div>
+    <div class="grid grid-2" style="margin-top:14px">
+      <div class="stat"><div class="muted small">Principal Amount</div><b>${fmtMoney(res.P)}</b></div>
+      <div class="stat"><div class="muted small">Total Interest</div><b>${fmtMoney(res.totalInterest)}</b></div>
+      <div class="stat"><div class="muted small">Total Payable</div><b>${fmtMoney(res.totalPayment)}</b></div>
+      <div class="stat"><div class="muted small">Number of EMIs</div><b>${res.n}</b></div>
+    </div>`;
+}
+
+function renderEmiSchedule(res) {
+  if (!res) return `<div class="empty">Amortization schedule will appear here.</div>`;
+  const rows = emiSchedule(res);
+  return `
+    <div class="card-title"><h2>Amortization Schedule</h2><button class="btn" onclick="exportEmiCSV()">Export CSV</button></div>
+    <div class="table-wrap"><table><thead><tr><th>Month</th><th>Principal</th><th>Interest</th><th>EMI</th><th>Balance</th></tr></thead><tbody>
+    ${rows.map(r => `<tr><td>${r.month}</td><td>${fmtMoney(r.principal)}</td><td>${fmtMoney(r.interest)}</td><td>${fmtMoney(r.payment)}</td><td>${fmtMoney(r.balance)}</td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+function readEmiInputs() {
+  const amount = Number($('#emiAmount')?.value) || 0;
+  const rate = Number($('#emiRate')?.value) || 0;
+  let tenure = Number($('#emiTenure')?.value) || 0;
+  const unit = $('#emiTenureUnit')?.value || 'years';
+  const months = unit === 'years' ? tenure * 12 : tenure;
+  return computeEmi(amount, rate, months);
+}
+
+function calcEmi() {
+  const res = readEmiInputs();
+  const resultEl = $('#emiResult');
+  const scheduleEl = $('#emiScheduleCard');
+  if (resultEl) resultEl.innerHTML = renderEmiResult(res);
+  if (scheduleEl) scheduleEl.innerHTML = renderEmiSchedule(res);
+}
+
+function exportEmiCSV() {
+  const res = readEmiInputs();
+  if (!res) return toast('Enter valid loan details first');
+  const rows = emiSchedule(res).map(r => ({
+    Month: r.month,
+    Principal: r.principal.toFixed(2),
+    Interest: r.interest.toFixed(2),
+    EMI: r.payment.toFixed(2),
+    Balance: r.balance.toFixed(2)
+  }));
+  exportRowsCSV(`flms-emi-schedule-${today()}.csv`, rows);
+}
+
 function csvEscape(v) { return `"${String(v ?? '').replace(/"/g, '""')}"`; }
 function downloadText(filename, text, type='text/plain') {
   const blob = new Blob([text], { type }); const a = document.createElement('a');
@@ -1080,6 +1198,25 @@ function resetDB() { if (!confirm('Reset all data?')) return; localStorage.remov
 
 function exportCurrentVisibleCSV() { exportLeadsCSV(); }
 
+async function refreshApp() {
+  toast('Updating to latest version…');
+  try {
+    // Ask the browser to check for a new service worker version.
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.update().catch(() => {})));
+    }
+    // Clear cached app shell so the newest files are fetched. This does NOT
+    // touch localStorage, so all saved leads and settings are preserved.
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch (e) { console.warn('Refresh failed', e); }
+  // Reload from network with the caches cleared.
+  location.reload();
+}
+
 function installApp() {
   if (deferredPrompt) {
     deferredPrompt.prompt();
@@ -1095,4 +1232,4 @@ if ('serviceWorker' in navigator) {
 render();
 
 // Expose functions for inline handlers
-Object.assign(window, { navigate, login, logout, installApp, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup });
+Object.assign(window, { navigate, login, logout, installApp, refreshApp, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });
