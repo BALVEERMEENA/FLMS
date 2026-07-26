@@ -270,3 +270,8 @@ tr:hover td { background:#eef2f7; }
 .help-list { margin: 6px 0 4px; padding-left: 20px; }
 .help-list li { margin: 10px 0; line-height: 1.45; }
 .kbd { display:inline-block; padding: 0 6px; border:1px solid var(--border); border-radius: 8px; background:#f8fafc; font-size:13px; }
+
+/* One-tap install banner (shown when the browser allows install) */
+.install-banner { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(90px + env(safe-area-inset-bottom, 0px)); z-index: 40; width: min(560px, calc(100vw - 24px)); display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; background:#fff; border:1px solid var(--border); border-radius:18px; box-shadow:0 18px 50px rgba(15,23,42,.22); padding:12px 14px; }
+.install-banner .ib-text { display:flex; flex-direction:column; gap:2px; }
+@media (min-width: 981px) { .install-banner { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); } }
