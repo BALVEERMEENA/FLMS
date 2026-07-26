@@ -376,7 +376,7 @@ function openDrawer() {
       <nav class="nav">${drawerNav()}</nav>
       <div class="sidebar-footer">
         <div class="user-chip"><b>${escapeHtml(currentUser.name)}</b><span>${escapeHtml(currentUser.email)} · ${escapeHtml(currentUser.role)}</span></div>
-        <button class="btn full ghost" onclick="logout()">Logout</button>
+        <div class="menu-actions">${menuActionButtons(true)}</div>
       </div>
     </aside></div>`;
   document.body.insertAdjacentHTML('beforeend', html);
@@ -390,6 +390,38 @@ function closeDrawer() {
 }
 function drawerBackdrop(e) { if (e.target.id === 'navDrawer') closeDrawer(); }
 
+function menuActionButtons(closeAfter = false) {
+  const close = closeAfter ? 'closeDrawer();' : '';
+  return `
+    <button class="btn full ghost menu-action" onclick="${close}refreshApp()"><span class="ico">🔄</span><span class="lbl">Update</span></button>
+    <button class="btn full ghost menu-action" onclick="${close}installApp()"><span class="ico">📲</span><span class="lbl">Install App</span></button>
+    <button class="btn full ghost menu-action" onclick="${close}logout()"><span class="ico">⎋</span><span class="lbl">Logout</span></button>`;
+}
+
+function pageActionBar() {
+  let actions = [];
+  if (currentRoute === 'dashboard') {
+    if (can('createLead')) actions.push(`<button class="btn primary" onclick="openLeadModal()">＋ New Lead</button>`);
+  } else if (currentRoute === 'leads') {
+    if (can('exportData')) actions.push(`<button class="btn" onclick="exportLeadsCSV()">⬇️ Export CSV</button>`);
+    if (can('createLead')) actions.push(`<button class="btn primary" onclick="openLeadModal()">＋ New Lead</button>`);
+  } else if (currentRoute === 'reports') {
+    if (can('exportData')) actions.push(`<button class="btn" onclick="exportCurrentReport()">⬇️ Export CSV</button>`);
+    actions.push(`<button class="btn" onclick="window.print()">🖨️ Print</button>`);
+  } else if (currentRoute === 'audit') {
+    if (can('exportData')) actions.push(`<button class="btn" onclick="exportAuditCSV()">⬇️ Export CSV</button>`);
+  } else if (currentRoute === 'lead') {
+    const lead = db.leads.find(l => l.id === currentLeadId);
+    if (lead) {
+      if (canEditLead(lead)) actions.push(`<button class="btn" onclick="openLeadModal('${lead.id}')">✏️ Edit</button>`);
+      actions.push(leadDeleteAction(lead));
+      actions.push(`<button class="btn" onclick="window.print()">🖨️ Print</button>`);
+    }
+  }
+  actions = actions.filter(Boolean);
+  return actions.length ? `<div class="action-bar">${actions.join('')}</div>` : '';
+}
+
 function renderShell(content) {
   const [title, subtitle] = pageTitle();
   return `
@@ -402,25 +434,19 @@ function renderShell(content) {
         <nav class="nav">${navButtons()}</nav>
         <div class="sidebar-footer">
           <div class="user-chip"><b>${escapeHtml(currentUser.name)}</b><span>${escapeHtml(currentUser.email)} · ${escapeHtml(currentUser.role)}</span></div>
-          <button class="btn full ghost" onclick="logout()"><span class="ico">⎋</span><span class="lbl">Logout</span></button>
+          <div class="menu-actions">${menuActionButtons()}</div>
         </div>
       </aside>
       <main class="main">
         <header class="topbar">
           <div class="topbar-left">
-            <button class="icon-btn sidebar-toggle" onclick="menuAction()" title="Menu" aria-label="Toggle menu">☰</button>
+            <button class="icon-btn sidebar-toggle" onclick="menuAction()" title="Menu" aria-label="Open menu">☰</button>
             <div class="topbar-head"><h1>${title}</h1><p>${subtitle}</p></div>
-          </div>
-          <div class="btn-row topbar-actions">
-            <button class="btn icon-btn" onclick="refreshApp()" title="Update to latest version"><span class="ico">🔄</span><span class="lbl">Update</span></button>
-            <button class="btn icon-btn" onclick="installApp()" title="Install app"><span class="ico">📲</span><span class="lbl">Install</span></button>
-            <button class="btn icon-btn" onclick="logout()" title="Logout"><span class="ico">⎋</span><span class="lbl">Logout</span></button>
           </div>
         </header>
         <section class="content">${content}</section>
+        ${pageActionBar()}
       </main>
-      <nav class="mobile-bottom">${mobileNavButtons()}</nav>
-      ${currentRoute !== 'lead' && can('createLead') ? `<button class="fab" title="Add Lead" onclick="openLeadModal()">+</button>` : ''}
     </div>
   `;
 }
@@ -502,7 +528,7 @@ function renderDashboard() {
   const maxStage = Math.max(1, ...stageCounts.map(x => x.count));
   const recent = leads.slice(0, 8);
   return `
-    <div class="grid grid-4">
+    <div class="tiles">
       ${kpi('Total Files', leads.length, '📁', 'All visible leads/files', "navigate('leads')")}
       ${kpi('Active Files', active, '⚡', 'Not closed or rejected', "navigate('leads')")}
       ${kpi('Disbursed', disbursed, '✅', 'Disbursement stage/status', "gotoReport('disbursed')")}
@@ -518,15 +544,15 @@ function renderDashboard() {
         ${stageCounts.length ? `<div class="bar-list">${stageCounts.map(x => `<div class="bar-row"><div class="bar-head"><b>${escapeHtml(x.name)}</b><span>${x.count}</span></div><div class="bar-bg"><div class="bar-fill" style="width:${Math.round((x.count / maxStage) * 100)}%"></div></div></div>`).join('')}</div>` : `<div class="empty">No file movement yet. Add your first lead.</div>`}
       </div>
       <div class="card">
-        <div class="card-title"><h2>Recent Files</h2>${can('createLead') ? `<button class="btn primary" onclick="openLeadModal()">Add Lead</button>` : ''}</div>
+        <div class="card-title"><h2>Recent Files</h2></div>
         ${recent.length ? renderMiniLeadList(recent) : `<div class="empty">No leads available.</div>`}
       </div>
     </div>`;
 }
 
 function kpi(label, value, icon, desc, onclick = '') {
-  const clickable = onclick ? ` kpi-click" role="button" tabindex="0" onclick="${onclick}` : '';
-  return `<div class="card kpi${clickable}"><div><div class="muted small">${escapeHtml(label)}</div><div class="big-number">${value}</div><div class="muted small">${escapeHtml(desc)}</div></div><div class="bubble">${icon}</div></div>`;
+  const attr = onclick ? ` role="button" tabindex="0" onclick="${onclick}"` : '';
+  return `<div class="tile${onclick ? ' tile-click' : ''}"${attr} title="${escapeHtml(desc)}"><div class="tile-bubble">${icon}</div><div class="tile-num">${value}</div><div class="tile-label">${escapeHtml(label)}</div></div>`;
 }
 
 function gotoReport(type) {
@@ -545,7 +571,6 @@ function renderLeads() {
     <div class="card">
       <div class="card-title">
         <div><h2>Lead & File Register</h2><p class="muted small">Search, filter, open file details or create a new lead.</p></div>
-        <div class="btn-row">${can('exportData') ? `<button class="btn" onclick="exportLeadsCSV()">Export CSV</button>` : ''}${can('createLead') ? `<button class="btn primary" onclick="openLeadModal()">+ New Lead</button>` : ''}</div>
       </div>
       <div class="filter-bar">
         <div class="search-wrap"><span class="search-ico">🔍</span><input class="input" id="leadSearch" placeholder="Search customer, mobile, valuer, advocate…" oninput="filterLeadTable()" /></div>
@@ -783,7 +808,7 @@ function renderLeadDetail(id) {
   const movements = db.movements.filter(m => m.leadId === lead.id).sort((a,b) => new Date(b.updatedAt) - new Date(a.updatedAt));
   const disb = db.disbursements.find(d => d.leadId === lead.id) || {};
   return `
-    <div class="btn-row" style="margin-bottom:14px"><button class="btn" onclick="navigate('leads')">← Back</button>${canEditLead(lead) ? `<button class="btn" onclick="openLeadModal('${lead.id}')">Edit Lead</button>` : ''}${leadDeleteAction(lead)}<button class="btn primary" onclick="window.print()">Print</button></div>
+    <div class="btn-row" style="margin-bottom:14px"><button class="btn" onclick="navigate('leads')">← Back</button></div>
     <div class="grid grid-3">
       <div class="card"><div class="muted small">Customer</div><h2>${escapeHtml(lead.customerName)}</h2><p class="muted">${escapeHtml(lead.mobile)}${lead.alternateMobile ? ' / ' + escapeHtml(lead.alternateMobile) : ''}</p>${statusBadge(lead.status)}</div>
       <div class="card"><div class="muted small">Current Stage</div><h2>${escapeHtml(stageName(lead.currentStageId))}</h2><p class="muted">Assigned: ${escapeHtml(userName(lead.assignedTo))}</p></div>
@@ -1074,7 +1099,7 @@ function toggleActive(collection, id) {
 
 function renderReports() {
   const types = [['leads','Lead Report'], ['pending','Pending Stage'], ['disbursed','Disbursement'], ['compliance','Compliance Pending'], ['followups','Follow-up Due']];
-  return `<div class="card"><div class="card-title"><h2>Reports</h2><div class="btn-row">${can('exportData') ? `<button class="btn" onclick="exportCurrentReport()">Export CSV</button>` : ''}<button class="btn" onclick="window.print()">Print</button></div></div><div class="tabs">${types.map(t => `<button class="tab ${reportType === t[0] ? 'active' : ''}" onclick="reportType='${t[0]}'; render()">${t[1]}</button>`).join('')}</div>${renderReportTable()}</div>`;
+  return `<div class="card"><div class="card-title"><h2>Reports</h2></div><div class="tabs">${types.map(t => `<button class="tab ${reportType === t[0] ? 'active' : ''}" onclick="reportType='${t[0]}'; render()">${t[1]}</button>`).join('')}</div>${renderReportTable()}</div>`;
 }
 
 function reportRows() {
@@ -1101,7 +1126,7 @@ function renderReportTable() {
 
 function renderAudit() {
   const rows = db.auditLogs.slice(0, 250);
-  return `<div class="card"><div class="card-title"><h2>Audit Logs</h2><button class="btn" onclick="exportAuditCSV()">Export CSV</button></div>${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Action</th><th>Entity</th><th>User</th><th>Date</th></tr></thead><tbody>${rows.map(a => `<tr><td><b>${escapeHtml(a.action)}</b></td><td>${escapeHtml(a.entityType)}<div class="muted small">${escapeHtml(a.entityId)}</div></td><td>${escapeHtml(userName(a.performedBy))}</td><td>${fmtDate(a.performedAt)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty">No audit logs yet.</div>`}</div>`;
+  return `<div class="card"><div class="card-title"><h2>Audit Logs</h2></div>${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Action</th><th>Entity</th><th>User</th><th>Date</th></tr></thead><tbody>${rows.map(a => `<tr><td><b>${escapeHtml(a.action)}</b></td><td>${escapeHtml(a.entityType)}<div class="muted small">${escapeHtml(a.entityId)}</div></td><td>${escapeHtml(userName(a.performedBy))}</td><td>${fmtDate(a.performedAt)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty">No audit logs yet.</div>`}</div>`;
 }
 
 function renderBackup() {
