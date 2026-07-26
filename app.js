@@ -1288,13 +1288,58 @@ async function refreshApp() {
   location.reload();
 }
 
-function installApp() {
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+async function installApp() {
+  if (isStandalone()) { toast('FLMS is already installed — you are using the installed app.'); return; }
   if (deferredPrompt) {
     deferredPrompt.prompt();
-    deferredPrompt.userChoice.finally(() => deferredPrompt = null);
-  } else toast('Use browser menu → Add to Home Screen / Install App');
+    try {
+      const { outcome } = await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      if (outcome !== 'accepted') openInstallHelp();
+    } catch (e) { deferredPrompt = null; openInstallHelp(); }
+    return;
+  }
+  // Native prompt not ready yet — show clear manual steps.
+  openInstallHelp();
 }
+
+function openInstallHelp() {
+  const ua = navigator.userAgent || '';
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (/, Macintosh/.test(ua) && 'ontouchend' in document);
+  const isAndroid = /Android/.test(ua);
+  let steps;
+  if (isIOS) {
+    steps = `<ol class="help-list">
+      <li>Open this site in <b>Safari</b> (not Chrome or an in-app browser).</li>
+      <li>Tap the <b>Share</b> button <span class="kbd">⬆️</span> at the bottom.</li>
+      <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
+      <li>Tap <b>Add</b>. The FLMS icon appears on your home screen.</li>
+    </ol>`;
+  } else if (isAndroid) {
+    steps = `<ol class="help-list">
+      <li><b>Use the app for ~30 seconds first</b> — tap around a few screens. Chrome only offers install after you've interacted with the site.</li>
+      <li>Make sure you opened it in <b>Chrome</b> directly (not inside WhatsApp/Instagram/Facebook — those in-app browsers can't install).</li>
+      <li>Open Chrome's <b>⋮ menu</b> → tap <b>Add to Home screen</b> → <b>Install</b>.</li>
+      <li>Still no option? Tap <b>🔄 Update</b> in the top bar (clears the old cache), let it reload, use it briefly, then try again.</li>
+    </ol>
+    <p class="muted small">Tip: come back and tap this <b>Install</b> button again after using the app a little — the one-tap installer usually becomes available.</p>`;
+  } else {
+    steps = `<ol class="help-list">
+      <li>Use <b>Chrome</b> or <b>Edge</b> on desktop.</li>
+      <li>Look for the <b>install icon</b> (a monitor with a down-arrow) at the right edge of the address bar, and click it.</li>
+      <li>Or open the browser <b>⋮ menu</b> → <b>Install FLMS…</b> / <b>Apps → Install this site</b>.</li>
+    </ol>`;
+  }
+  const html = `<div class="modal-backdrop" onclick="closeModal(event)"><div class="modal" onclick="event.stopPropagation()" style="max-width:520px"><div class="modal-head"><h2>📲 Install FLMS</h2><button type="button" class="close" onclick="removeModal()">×</button></div>${steps}<div class="btn-row" style="margin-top:8px"><button class="btn primary" type="button" onclick="removeModal()">Got it</button></div></div></div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; });
+window.addEventListener('appinstalled', () => { deferredPrompt = null; toast('✅ FLMS installed successfully. Open it from your home screen.'); });
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js').catch(console.warn));
@@ -1303,4 +1348,4 @@ if ('serviceWorker' in navigator) {
 render();
 
 // Expose functions for inline handlers
-Object.assign(window, { navigate, login, logout, installApp, refreshApp, toggleSidebar, gotoReport, clearLeadFilters, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });
+Object.assign(window, { navigate, login, logout, installApp, refreshApp, toggleSidebar, gotoReport, clearLeadFilters, openInstallHelp, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });

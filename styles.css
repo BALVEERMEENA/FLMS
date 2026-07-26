@@ -265,3 +265,8 @@ tr:hover td { background:#eef2f7; }
   .topbar-actions .lbl { display:none; }
   .topbar-actions .btn { padding:10px 11px; }
 }
+
+/* Install help modal */
+.help-list { margin: 6px 0 4px; padding-left: 20px; }
+.help-list li { margin: 10px 0; line-height: 1.45; }
+.kbd { display:inline-block; padding: 0 6px; border:1px solid var(--border); border-radius: 8px; background:#f8fafc; font-size:13px; }
