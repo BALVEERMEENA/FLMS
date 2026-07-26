@@ -328,8 +328,8 @@ function isRouteActive(route) {
   return false;
 }
 
-function navButtons() {
-  const items = [
+function navItemList() {
+  return [
     ['dashboard', '📊', 'Dashboard'],
     ['leads', '📁', 'Files'],
     ['tools', '🧰', 'Tools'],
@@ -338,10 +338,18 @@ function navButtons() {
     ...(can('viewAudit') ? [['audit', '🧾', 'Audit']] : []),
     ...(can('backupData') ? [['backup', '💾', 'Backup']] : [])
   ];
-  return items.map(([route, icon, label]) => `<button class="${isRouteActive(route) ? 'active' : ''}" onclick="navigate('${route}')" title="${escapeHtml(label)}"><span class="icon">${icon}</span><span class="lbl">${label}</span></button>`).join('');
+}
+
+function navButtons() {
+  return navItemList().map(([route, icon, label]) => `<button class="${isRouteActive(route) ? 'active' : ''}" onclick="navigate('${route}')" title="${escapeHtml(label)}"><span class="icon">${icon}</span><span class="lbl">${label}</span></button>`).join('');
+}
+
+function drawerNav() {
+  return navItemList().map(([route, icon, label]) => `<button class="${isRouteActive(route) ? 'active' : ''}" onclick="navigate('${route}');closeDrawer()"><span class="icon">${icon}</span><span class="lbl">${label}</span></button>`).join('');
 }
 
 function mobileNavButtons() {
+  // Primary tabs live in the bottom bar; everything else is in the drawer.
   const items = [
     ['dashboard', '📊', 'Home'],
     ['leads', '📁', 'Files'],
@@ -349,8 +357,38 @@ function mobileNavButtons() {
     ...(can('viewReports') ? [['reports', '📈', 'Reports']] : []),
     ...(can('manageAdmin') ? [['admin', '⚙️', 'Admin']] : [])
   ];
-  return items.slice(0, 5).map(([route, icon, label]) => `<button class="${isRouteActive(route) ? 'active' : ''}" onclick="navigate('${route}')"><span class="mi">${icon}</span>${label}</button>`).join('');
+  return items.slice(0, 5).map(([route, icon, label]) => `<button class="${isRouteActive(route) ? 'active' : ''}" onclick="navigate('${route}')"><span class="mi">${icon}</span><span class="mlbl">${label}</span></button>`).join('');
 }
+
+function menuAction() {
+  if (window.innerWidth <= 980) openDrawer();
+  else toggleSidebar();
+}
+
+function openDrawer() {
+  if (document.getElementById('navDrawer')) return;
+  const html = `<div id="navDrawer" class="drawer-backdrop" onclick="drawerBackdrop(event)">
+    <aside class="drawer" onclick="event.stopPropagation()">
+      <div class="brand">
+        <div class="logo">F</div>
+        <div><div class="brand-title">${escapeHtml(db.settings.appName || 'FLMS')}</div><div class="brand-subtitle">File & Lead Movement</div></div>
+      </div>
+      <nav class="nav">${drawerNav()}</nav>
+      <div class="sidebar-footer">
+        <div class="user-chip"><b>${escapeHtml(currentUser.name)}</b><span>${escapeHtml(currentUser.email)} · ${escapeHtml(currentUser.role)}</span></div>
+        <button class="btn full ghost" onclick="logout()">Logout</button>
+      </div>
+    </aside></div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  requestAnimationFrame(() => document.getElementById('navDrawer')?.classList.add('open'));
+}
+function closeDrawer() {
+  const d = document.getElementById('navDrawer');
+  if (!d) return;
+  d.classList.remove('open');
+  setTimeout(() => d.remove(), 220);
+}
+function drawerBackdrop(e) { if (e.target.id === 'navDrawer') closeDrawer(); }
 
 function renderShell(content) {
   const [title, subtitle] = pageTitle();
@@ -370,7 +408,7 @@ function renderShell(content) {
       <main class="main">
         <header class="topbar">
           <div class="topbar-left">
-            <button class="icon-btn sidebar-toggle" onclick="toggleSidebar()" title="${sidebarCollapsed ? 'Expand menu' : 'Collapse menu'}" aria-label="Toggle menu">☰</button>
+            <button class="icon-btn sidebar-toggle" onclick="menuAction()" title="Menu" aria-label="Toggle menu">☰</button>
             <div class="topbar-head"><h1>${title}</h1><p>${subtitle}</p></div>
           </div>
           <div class="btn-row topbar-actions">
@@ -1376,4 +1414,4 @@ if ('serviceWorker' in navigator) {
 render();
 
 // Expose functions for inline handlers
-Object.assign(window, { navigate, login, logout, installApp, refreshApp, toggleSidebar, gotoReport, clearLeadFilters, openInstallHelp, dismissInstallBanner, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });
+Object.assign(window, { navigate, login, logout, installApp, refreshApp, toggleSidebar, gotoReport, clearLeadFilters, openInstallHelp, dismissInstallBanner, menuAction, openDrawer, closeDrawer, drawerBackdrop, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });

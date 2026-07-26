@@ -259,7 +259,7 @@ tr:hover td { background:#eef2f7; }
 /* Keep single-column layout on mobile even when sidebar is 'collapsed' */
 @media (max-width: 980px) {
   .app-shell.collapsed { grid-template-columns: 1fr; }
-  .sidebar-toggle { display:none; }
+  /* On mobile the hamburger opens the navigation drawer instead of collapsing. */
 }
 @media (max-width: 640px) {
   .topbar-actions .lbl { display:none; }
@@ -275,3 +275,38 @@ tr:hover td { background:#eef2f7; }
 .install-banner { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(90px + env(safe-area-inset-bottom, 0px)); z-index: 40; width: min(560px, calc(100vw - 24px)); display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; background:#fff; border:1px solid var(--border); border-radius:18px; box-shadow:0 18px 50px rgba(15,23,42,.22); padding:12px 14px; }
 .install-banner .ib-text { display:flex; flex-direction:column; gap:2px; }
 @media (min-width: 981px) { .install-banner { bottom: calc(20px + env(safe-area-inset-bottom, 0px)); } }
+
+/* ============ v5 native-feel adjustments ============ */
+
+/* Kill web giveaways: no blue tap highlight, no accidental text selection on chrome */
+* { -webkit-tap-highlight-color: transparent; }
+html, body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overscroll-behavior-y: contain; }
+/* Keep data and inputs selectable so users can still copy phone numbers etc. */
+input, textarea, select, td, th, .selectable, .big-number, .emi-emi { -webkit-user-select: text; user-select: text; }
+
+/* Native momentum scrolling */
+.content, .table-wrap, .modal, .drawer, .sidebar { -webkit-overflow-scrolling: touch; }
+
+/* Left navigation drawer (mobile) */
+.drawer-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.5); z-index: 60; opacity: 0; transition: opacity .2s ease; }
+.drawer-backdrop.open { opacity: 1; }
+.drawer { position: absolute; top: 0; left: 0; bottom: 0; width: min(284px, 84vw); background: linear-gradient(180deg, var(--primary-2), #0f172a); color: #fff; padding: 22px; padding-top: calc(22px + env(safe-area-inset-top, 0px)); padding-left: calc(22px + env(safe-area-inset-left, 0px)); transform: translateX(-100%); transition: transform .22s ease; overflow-y: auto; display: flex; flex-direction: column; }
+.drawer-backdrop.open .drawer { transform: none; }
+.drawer .nav { flex: 1; }
+.drawer .sidebar-footer { margin-top: 16px; }
+
+/* Active-only labels in the bottom tab bar (native pattern) */
+@media (max-width: 980px) {
+  .mobile-bottom button { position: relative; }
+  .mobile-bottom .mlbl { display: none; }
+  .mobile-bottom button.active { flex: 1.5; }
+  .mobile-bottom button.active .mlbl { display: block; }
+}
+
+/* Bottom-sheet style modals on phones */
+@media (max-width: 700px) {
+  .modal-backdrop { align-items: end; padding: 0; }
+  .modal, .modal.wide-modal { width: 100%; max-width: 100%; max-height: 92vh; border-radius: 22px 22px 0 0; padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); animation: sheetUp .26s cubic-bezier(.22,.61,.36,1); }
+  .modal::before { content: ""; display: block; width: 42px; height: 5px; border-radius: 999px; background: var(--border); margin: -4px auto 12px; }
+  @keyframes sheetUp { from { transform: translateY(100%); } to { transform: none; } }
+}
