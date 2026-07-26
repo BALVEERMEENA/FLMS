@@ -398,6 +398,30 @@ function menuActionButtons(closeAfter = false) {
     <button class="btn full ghost menu-action" onclick="${close}logout()"><span class="ico">⎋</span><span class="lbl">Logout</span></button>`;
 }
 
+function pageActionBar() {
+  let actions = [];
+  if (currentRoute === 'dashboard') {
+    if (can('createLead')) actions.push(`<button class="btn primary" onclick="openLeadModal()">＋ New Lead</button>`);
+  } else if (currentRoute === 'leads') {
+    if (can('exportData')) actions.push(`<button class="btn" onclick="exportLeadsCSV()">⬇️ Export CSV</button>`);
+    if (can('createLead')) actions.push(`<button class="btn primary" onclick="openLeadModal()">＋ New Lead</button>`);
+  } else if (currentRoute === 'reports') {
+    if (can('exportData')) actions.push(`<button class="btn" onclick="exportCurrentReport()">⬇️ Export CSV</button>`);
+    actions.push(`<button class="btn" onclick="window.print()">🖨️ Print</button>`);
+  } else if (currentRoute === 'audit') {
+    if (can('exportData')) actions.push(`<button class="btn" onclick="exportAuditCSV()">⬇️ Export CSV</button>`);
+  } else if (currentRoute === 'lead') {
+    const lead = db.leads.find(l => l.id === currentLeadId);
+    if (lead) {
+      if (canEditLead(lead)) actions.push(`<button class="btn" onclick="openLeadModal('${lead.id}')">✏️ Edit</button>`);
+      actions.push(leadDeleteAction(lead));
+      actions.push(`<button class="btn" onclick="window.print()">🖨️ Print</button>`);
+    }
+  }
+  actions = actions.filter(Boolean);
+  return actions.length ? `<div class="action-bar">${actions.join('')}</div>` : '';
+}
+
 function renderShell(content) {
   const [title, subtitle] = pageTitle();
   return `
@@ -421,8 +445,8 @@ function renderShell(content) {
           </div>
         </header>
         <section class="content">${content}</section>
+        ${pageActionBar()}
       </main>
-      ${currentRoute !== 'lead' && can('createLead') ? `<button class="fab" title="Add Lead" onclick="openLeadModal()">+</button>` : ''}
     </div>
   `;
 }
@@ -520,7 +544,7 @@ function renderDashboard() {
         ${stageCounts.length ? `<div class="bar-list">${stageCounts.map(x => `<div class="bar-row"><div class="bar-head"><b>${escapeHtml(x.name)}</b><span>${x.count}</span></div><div class="bar-bg"><div class="bar-fill" style="width:${Math.round((x.count / maxStage) * 100)}%"></div></div></div>`).join('')}</div>` : `<div class="empty">No file movement yet. Add your first lead.</div>`}
       </div>
       <div class="card">
-        <div class="card-title"><h2>Recent Files</h2>${can('createLead') ? `<button class="btn primary" onclick="openLeadModal()">Add Lead</button>` : ''}</div>
+        <div class="card-title"><h2>Recent Files</h2></div>
         ${recent.length ? renderMiniLeadList(recent) : `<div class="empty">No leads available.</div>`}
       </div>
     </div>`;
@@ -547,7 +571,6 @@ function renderLeads() {
     <div class="card">
       <div class="card-title">
         <div><h2>Lead & File Register</h2><p class="muted small">Search, filter, open file details or create a new lead.</p></div>
-        <div class="btn-row">${can('exportData') ? `<button class="btn" onclick="exportLeadsCSV()">Export CSV</button>` : ''}${can('createLead') ? `<button class="btn primary" onclick="openLeadModal()">+ New Lead</button>` : ''}</div>
       </div>
       <div class="filter-bar">
         <div class="search-wrap"><span class="search-ico">🔍</span><input class="input" id="leadSearch" placeholder="Search customer, mobile, valuer, advocate…" oninput="filterLeadTable()" /></div>
@@ -785,7 +808,7 @@ function renderLeadDetail(id) {
   const movements = db.movements.filter(m => m.leadId === lead.id).sort((a,b) => new Date(b.updatedAt) - new Date(a.updatedAt));
   const disb = db.disbursements.find(d => d.leadId === lead.id) || {};
   return `
-    <div class="btn-row" style="margin-bottom:14px"><button class="btn" onclick="navigate('leads')">← Back</button>${canEditLead(lead) ? `<button class="btn" onclick="openLeadModal('${lead.id}')">Edit Lead</button>` : ''}${leadDeleteAction(lead)}<button class="btn primary" onclick="window.print()">Print</button></div>
+    <div class="btn-row" style="margin-bottom:14px"><button class="btn" onclick="navigate('leads')">← Back</button></div>
     <div class="grid grid-3">
       <div class="card"><div class="muted small">Customer</div><h2>${escapeHtml(lead.customerName)}</h2><p class="muted">${escapeHtml(lead.mobile)}${lead.alternateMobile ? ' / ' + escapeHtml(lead.alternateMobile) : ''}</p>${statusBadge(lead.status)}</div>
       <div class="card"><div class="muted small">Current Stage</div><h2>${escapeHtml(stageName(lead.currentStageId))}</h2><p class="muted">Assigned: ${escapeHtml(userName(lead.assignedTo))}</p></div>
@@ -1076,7 +1099,7 @@ function toggleActive(collection, id) {
 
 function renderReports() {
   const types = [['leads','Lead Report'], ['pending','Pending Stage'], ['disbursed','Disbursement'], ['compliance','Compliance Pending'], ['followups','Follow-up Due']];
-  return `<div class="card"><div class="card-title"><h2>Reports</h2><div class="btn-row">${can('exportData') ? `<button class="btn" onclick="exportCurrentReport()">Export CSV</button>` : ''}<button class="btn" onclick="window.print()">Print</button></div></div><div class="tabs">${types.map(t => `<button class="tab ${reportType === t[0] ? 'active' : ''}" onclick="reportType='${t[0]}'; render()">${t[1]}</button>`).join('')}</div>${renderReportTable()}</div>`;
+  return `<div class="card"><div class="card-title"><h2>Reports</h2></div><div class="tabs">${types.map(t => `<button class="tab ${reportType === t[0] ? 'active' : ''}" onclick="reportType='${t[0]}'; render()">${t[1]}</button>`).join('')}</div>${renderReportTable()}</div>`;
 }
 
 function reportRows() {
@@ -1103,7 +1126,7 @@ function renderReportTable() {
 
 function renderAudit() {
   const rows = db.auditLogs.slice(0, 250);
-  return `<div class="card"><div class="card-title"><h2>Audit Logs</h2><button class="btn" onclick="exportAuditCSV()">Export CSV</button></div>${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Action</th><th>Entity</th><th>User</th><th>Date</th></tr></thead><tbody>${rows.map(a => `<tr><td><b>${escapeHtml(a.action)}</b></td><td>${escapeHtml(a.entityType)}<div class="muted small">${escapeHtml(a.entityId)}</div></td><td>${escapeHtml(userName(a.performedBy))}</td><td>${fmtDate(a.performedAt)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty">No audit logs yet.</div>`}</div>`;
+  return `<div class="card"><div class="card-title"><h2>Audit Logs</h2></div>${rows.length ? `<div class="table-wrap"><table><thead><tr><th>Action</th><th>Entity</th><th>User</th><th>Date</th></tr></thead><tbody>${rows.map(a => `<tr><td><b>${escapeHtml(a.action)}</b></td><td>${escapeHtml(a.entityType)}<div class="muted small">${escapeHtml(a.entityId)}</div></td><td>${escapeHtml(userName(a.performedBy))}</td><td>${fmtDate(a.performedAt)}</td></tr>`).join('')}</tbody></table></div>` : `<div class="empty">No audit logs yet.</div>`}</div>`;
 }
 
 function renderBackup() {

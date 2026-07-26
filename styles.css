@@ -337,3 +337,12 @@ input, textarea, select, td, th, .selectable, .big-number, .emi-emi { -webkit-us
   .tile-num { font-size: 24px; }
   .tile-label { font-size: 11px; line-height: 1.25; }
 }
+
+/* Bottom action bar: page-level actions (Export, Print, New Lead, etc.) */
+.action-bar { position: sticky; bottom: 0; z-index: 6; display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; padding: 12px 24px calc(12px + env(safe-area-inset-bottom, 0px)) 24px; background: rgba(248,250,252,.92); backdrop-filter: blur(14px); border-top: 1px solid var(--border); }
+.action-bar .btn { min-width: 120px; }
+@media (max-width: 700px) {
+  .action-bar { padding: 10px calc(12px + env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left,0px)); gap: 8px; }
+  .action-bar .btn { flex: 1; min-width: 0; }
+}
+@media print { .action-bar { display: none !important; } }
