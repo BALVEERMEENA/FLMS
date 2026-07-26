@@ -376,7 +376,7 @@ function openDrawer() {
       <nav class="nav">${drawerNav()}</nav>
       <div class="sidebar-footer">
         <div class="user-chip"><b>${escapeHtml(currentUser.name)}</b><span>${escapeHtml(currentUser.email)} · ${escapeHtml(currentUser.role)}</span></div>
-        <button class="btn full ghost" onclick="logout()">Logout</button>
+        <div class="menu-actions">${menuActionButtons(true)}</div>
       </div>
     </aside></div>`;
   document.body.insertAdjacentHTML('beforeend', html);
@@ -390,6 +390,14 @@ function closeDrawer() {
 }
 function drawerBackdrop(e) { if (e.target.id === 'navDrawer') closeDrawer(); }
 
+function menuActionButtons(closeAfter = false) {
+  const close = closeAfter ? 'closeDrawer();' : '';
+  return `
+    <button class="btn full ghost menu-action" onclick="${close}refreshApp()"><span class="ico">🔄</span><span class="lbl">Update</span></button>
+    <button class="btn full ghost menu-action" onclick="${close}installApp()"><span class="ico">📲</span><span class="lbl">Install App</span></button>
+    <button class="btn full ghost menu-action" onclick="${close}logout()"><span class="ico">⎋</span><span class="lbl">Logout</span></button>`;
+}
+
 function renderShell(content) {
   const [title, subtitle] = pageTitle();
   return `
@@ -402,24 +410,18 @@ function renderShell(content) {
         <nav class="nav">${navButtons()}</nav>
         <div class="sidebar-footer">
           <div class="user-chip"><b>${escapeHtml(currentUser.name)}</b><span>${escapeHtml(currentUser.email)} · ${escapeHtml(currentUser.role)}</span></div>
-          <button class="btn full ghost" onclick="logout()"><span class="ico">⎋</span><span class="lbl">Logout</span></button>
+          <div class="menu-actions">${menuActionButtons()}</div>
         </div>
       </aside>
       <main class="main">
         <header class="topbar">
           <div class="topbar-left">
-            <button class="icon-btn sidebar-toggle" onclick="menuAction()" title="Menu" aria-label="Toggle menu">☰</button>
+            <button class="icon-btn sidebar-toggle" onclick="menuAction()" title="Menu" aria-label="Open menu">☰</button>
             <div class="topbar-head"><h1>${title}</h1><p>${subtitle}</p></div>
-          </div>
-          <div class="btn-row topbar-actions">
-            <button class="btn icon-btn" onclick="refreshApp()" title="Update to latest version"><span class="ico">🔄</span><span class="lbl">Update</span></button>
-            <button class="btn icon-btn" onclick="installApp()" title="Install app"><span class="ico">📲</span><span class="lbl">Install</span></button>
-            <button class="btn icon-btn" onclick="logout()" title="Logout"><span class="ico">⎋</span><span class="lbl">Logout</span></button>
           </div>
         </header>
         <section class="content">${content}</section>
       </main>
-      <nav class="mobile-bottom">${mobileNavButtons()}</nav>
       ${currentRoute !== 'lead' && can('createLead') ? `<button class="fab" title="Add Lead" onclick="openLeadModal()">+</button>` : ''}
     </div>
   `;
@@ -502,7 +504,7 @@ function renderDashboard() {
   const maxStage = Math.max(1, ...stageCounts.map(x => x.count));
   const recent = leads.slice(0, 8);
   return `
-    <div class="grid grid-4">
+    <div class="tiles">
       ${kpi('Total Files', leads.length, '📁', 'All visible leads/files', "navigate('leads')")}
       ${kpi('Active Files', active, '⚡', 'Not closed or rejected', "navigate('leads')")}
       ${kpi('Disbursed', disbursed, '✅', 'Disbursement stage/status', "gotoReport('disbursed')")}
@@ -525,8 +527,8 @@ function renderDashboard() {
 }
 
 function kpi(label, value, icon, desc, onclick = '') {
-  const clickable = onclick ? ` kpi-click" role="button" tabindex="0" onclick="${onclick}` : '';
-  return `<div class="card kpi${clickable}"><div><div class="muted small">${escapeHtml(label)}</div><div class="big-number">${value}</div><div class="muted small">${escapeHtml(desc)}</div></div><div class="bubble">${icon}</div></div>`;
+  const attr = onclick ? ` role="button" tabindex="0" onclick="${onclick}"` : '';
+  return `<div class="tile${onclick ? ' tile-click' : ''}"${attr} title="${escapeHtml(desc)}"><div class="tile-bubble">${icon}</div><div class="tile-num">${value}</div><div class="tile-label">${escapeHtml(label)}</div></div>`;
 }
 
 function gotoReport(type) {

@@ -140,7 +140,7 @@ tr:hover td { background:#f8fafc; }
 .hidden { display:none !important; }
 
 @media (max-width: 980px) {
-  .app-shell { grid-template-columns: 1fr; padding-bottom: calc(74px + env(safe-area-inset-bottom, 0px)); }
+  .app-shell { grid-template-columns: 1fr; padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); }
   .sidebar { display:none; }
   .topbar { padding: calc(14px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) 14px calc(16px + env(safe-area-inset-left, 0px)); }
   .content { padding: 16px; }
@@ -309,4 +309,31 @@ input, textarea, select, td, th, .selectable, .big-number, .emi-emi { -webkit-us
   .modal, .modal.wide-modal { width: 100%; max-width: 100%; max-height: 92vh; border-radius: 22px 22px 0 0; padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); animation: sheetUp .26s cubic-bezier(.22,.61,.36,1); }
   .modal::before { content: ""; display: block; width: 42px; height: 5px; border-radius: 999px; background: var(--border); margin: -4px auto 12px; }
   @keyframes sheetUp { from { transform: translateY(100%); } to { transform: none; } }
+}
+
+/* ============ v6 dashboard tiles + menu actions + no bottom bar ============ */
+
+/* Compact dashboard tiles: three per row */
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.tile { background: var(--card); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); padding: 16px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-height: 122px; }
+.tile-bubble { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: var(--primary-soft); font-size: 20px; }
+.tile-num { font-size: 30px; font-weight: 900; letter-spacing: -.03em; line-height: 1; }
+.tile-label { font-size: 13px; color: var(--muted); font-weight: 700; }
+.tile-click { cursor: pointer; transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease; }
+.tile-click:hover { transform: translateY(-2px); border-color: var(--primary); box-shadow: 0 16px 40px rgba(29,78,216,.14); }
+.tile-click:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* Update / Install / Logout now live in the side menu */
+.menu-actions { display: grid; gap: 8px; }
+.menu-actions .ico { width: 20px; text-align: center; }
+.sidebar .menu-actions .btn, .drawer .menu-actions .btn { justify-content: flex-start; gap: 10px; color: rgba(255,255,255,.92); background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.14); }
+.sidebar .menu-actions .btn:hover, .drawer .menu-actions .btn:hover { background: rgba(255,255,255,.14); box-shadow: none; }
+.app-shell.collapsed .menu-actions .btn { justify-content: center; }
+
+@media (max-width: 700px) {
+  .tiles { grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .tile { padding: 13px 10px; min-height: 108px; align-items: center; text-align: center; gap: 6px; }
+  .tile-bubble { width: 36px; height: 36px; font-size: 17px; }
+  .tile-num { font-size: 24px; }
+  .tile-label { font-size: 11px; line-height: 1.25; }
 }
