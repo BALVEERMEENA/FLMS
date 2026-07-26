@@ -328,8 +328,8 @@ function isRouteActive(route) {
   return false;
 }
 
-function navButtons() {
-  const items = [
+function navItemList() {
+  return [
     ['dashboard', '📊', 'Dashboard'],
     ['leads', '📁', 'Files'],
     ['tools', '🧰', 'Tools'],
@@ -338,10 +338,18 @@ function navButtons() {
     ...(can('viewAudit') ? [['audit', '🧾', 'Audit']] : []),
     ...(can('backupData') ? [['backup', '💾', 'Backup']] : [])
   ];
-  return items.map(([route, icon, label]) => `<button class="${isRouteActive(route) ? 'active' : ''}" onclick="navigate('${route}')" title="${escapeHtml(label)}"><span class="icon">${icon}</span><span class="lbl">${label}</span></button>`).join('');
+}
+
+function navButtons() {
+  return navItemList().map(([route, icon, label]) => `<button class="${isRouteActive(route) ? 'active' : ''}" onclick="navigate('${route}')" title="${escapeHtml(label)}"><span class="icon">${icon}</span><span class="lbl">${label}</span></button>`).join('');
+}
+
+function drawerNav() {
+  return navItemList().map(([route, icon, label]) => `<button class="${isRouteActive(route) ? 'active' : ''}" onclick="navigate('${route}');closeDrawer()"><span class="icon">${icon}</span><span class="lbl">${label}</span></button>`).join('');
 }
 
 function mobileNavButtons() {
+  // Primary tabs live in the bottom bar; everything else is in the drawer.
   const items = [
     ['dashboard', '📊', 'Home'],
     ['leads', '📁', 'Files'],
@@ -349,8 +357,38 @@ function mobileNavButtons() {
     ...(can('viewReports') ? [['reports', '📈', 'Reports']] : []),
     ...(can('manageAdmin') ? [['admin', '⚙️', 'Admin']] : [])
   ];
-  return items.slice(0, 5).map(([route, icon, label]) => `<button class="${isRouteActive(route) ? 'active' : ''}" onclick="navigate('${route}')"><span class="mi">${icon}</span>${label}</button>`).join('');
+  return items.slice(0, 5).map(([route, icon, label]) => `<button class="${isRouteActive(route) ? 'active' : ''}" onclick="navigate('${route}')"><span class="mi">${icon}</span><span class="mlbl">${label}</span></button>`).join('');
 }
+
+function menuAction() {
+  if (window.innerWidth <= 980) openDrawer();
+  else toggleSidebar();
+}
+
+function openDrawer() {
+  if (document.getElementById('navDrawer')) return;
+  const html = `<div id="navDrawer" class="drawer-backdrop" onclick="drawerBackdrop(event)">
+    <aside class="drawer" onclick="event.stopPropagation()">
+      <div class="brand">
+        <div class="logo">F</div>
+        <div><div class="brand-title">${escapeHtml(db.settings.appName || 'FLMS')}</div><div class="brand-subtitle">File & Lead Movement</div></div>
+      </div>
+      <nav class="nav">${drawerNav()}</nav>
+      <div class="sidebar-footer">
+        <div class="user-chip"><b>${escapeHtml(currentUser.name)}</b><span>${escapeHtml(currentUser.email)} · ${escapeHtml(currentUser.role)}</span></div>
+        <button class="btn full ghost" onclick="logout()">Logout</button>
+      </div>
+    </aside></div>`;
+  document.body.insertAdjacentHTML('beforeend', html);
+  requestAnimationFrame(() => document.getElementById('navDrawer')?.classList.add('open'));
+}
+function closeDrawer() {
+  const d = document.getElementById('navDrawer');
+  if (!d) return;
+  d.classList.remove('open');
+  setTimeout(() => d.remove(), 220);
+}
+function drawerBackdrop(e) { if (e.target.id === 'navDrawer') closeDrawer(); }
 
 function renderShell(content) {
   const [title, subtitle] = pageTitle();
@@ -370,7 +408,7 @@ function renderShell(content) {
       <main class="main">
         <header class="topbar">
           <div class="topbar-left">
-            <button class="icon-btn sidebar-toggle" onclick="toggleSidebar()" title="${sidebarCollapsed ? 'Expand menu' : 'Collapse menu'}" aria-label="Toggle menu">☰</button>
+            <button class="icon-btn sidebar-toggle" onclick="menuAction()" title="Menu" aria-label="Toggle menu">☰</button>
             <div class="topbar-head"><h1>${title}</h1><p>${subtitle}</p></div>
           </div>
           <div class="btn-row topbar-actions">
@@ -524,9 +562,9 @@ function renderLeads() {
 function renderLeadTable(leads) {
   if (!leads.length) return `<div class="empty">No leads found. Create your first lead.</div>`;
   return `<div class="table-wrap cards"><table><thead><tr><th>Customer</th><th>Product</th><th>Stage</th><th>Status</th><th>Assigned</th><th>Follow-up</th><th>Updated</th><th>Action</th></tr></thead><tbody>
-    ${leads.map(l => `<tr data-search="${escapeHtml((l.customerName + ' ' + l.mobile + ' ' + productName(l.productId) + ' ' + sourceDetail(l) + ' ' + (l.processingTeamName || '') + ' ' + (l.valuerName || '') + ' ' + (l.advocateName || '') + ' ' + (l.psirPersonName || '')).toLowerCase())}" data-stage="${l.currentStageId}" data-product="${l.productId}" data-status="${l.status}">
+    ${leads.map(l => `<tr data-search="${escapeHtml((l.customerName + ' ' + l.mobile + ' ' + productName(l.productId) + ' ' + (l.subProduct || '') + ' ' + sourceDetail(l) + ' ' + (l.processingTeamName || '') + ' ' + (l.valuerName || '') + ' ' + (l.advocateName || '') + ' ' + (l.psirPersonName || '')).toLowerCase())}" data-stage="${l.currentStageId}" data-product="${l.productId}" data-status="${l.status}">
       <td data-label="Customer"><b>${escapeHtml(l.customerName)}</b><div class="muted small">${escapeHtml(l.mobile)}${l.alternateMobile ? ' / ' + escapeHtml(l.alternateMobile) : ''}</div></td>
-      <td data-label="Product">${escapeHtml(productName(l.productId))}<div class="muted small">${escapeHtml(sourceName(l.leadSourceId))}: ${escapeHtml(sourceDetail(l))}</div></td>
+      <td data-label="Product">${escapeHtml(productName(l.productId))}${l.subProduct ? ` <span class="badge gray">${escapeHtml(l.subProduct)}</span>` : ''}<div class="muted small">${escapeHtml(sourceName(l.leadSourceId))}: ${escapeHtml(sourceDetail(l))}</div></td>
       <td data-label="Stage"><span class="badge blue">${escapeHtml(stageName(l.currentStageId))}</span></td>
       <td data-label="Status">${statusBadge(l.status)}${l.deleteStatus === 'pending' ? '<br><span class="badge amber">Delete Requested</span>' : l.deleteStatus === 'rejected' ? '<br><span class="badge gray">Delete Rejected</span>' : ''}</td>
       <td data-label="Assigned">${escapeHtml(userName(l.assignedTo))}<div class="muted small">${escapeHtml(branchName(l.branchId))}</div></td>
@@ -576,6 +614,7 @@ function openLeadModal(id = null) {
         ${field('Alternate Mobile','alternateMobile','tel',lead?.alternateMobile || '')}
         ${selectField('Branch','branchId',activeItems('branches'),lead?.branchId || currentUser.branchId,true)}
         ${selectField('Product','productId',activeItems('products'),lead?.productId || '',true)}
+        ${subProductField(lead?.subProduct || '')}
         ${sourceSelectField(lead?.leadSourceId || '')}
         ${sourceDetailInput('Branch Employee Name','branchEmployeeName','branch',lead?.branchEmployeeName || '')}
         ${sourceDetailInput('DST Name','dstName','dst',lead?.dstName || '')}
@@ -624,6 +663,13 @@ function updateSourceFields() {
 }
 function field(label, name, type = 'text', value = '', required = false) {
   return `<div class="field"><label>${escapeHtml(label)}</label><input class="input" name="${name}" type="${type}" value="${escapeHtml(value)}" ${required ? 'required' : ''}></div>`;
+}
+function subProductOptions() {
+  return [...new Set(db.leads.map(l => (l.subProduct || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+function subProductField(value = '') {
+  const opts = subProductOptions();
+  return `<div class="field"><label>Sub Product (optional)</label><input class="input" name="subProduct" type="text" list="subProductList" value="${escapeHtml(value)}" placeholder="Type or pick a sub product"><datalist id="subProductList">${opts.map(s => `<option value="${escapeHtml(s)}"></option>`).join('')}</datalist></div>`;
 }
 function selectField(label, name, items, value = '', required = false) {
   return `<div class="field"><label>${escapeHtml(label)}</label><select class="select" name="${name}" ${required ? 'required' : ''}><option value="">Select</option>${items.map(i => `<option value="${i.id}" ${i.id === value ? 'selected' : ''}>${escapeHtml(i.name)}${i.role ? ' (' + escapeHtml(i.role) + ')' : ''}</option>`).join('')}</select></div>`;
@@ -741,7 +787,7 @@ function renderLeadDetail(id) {
     <div class="grid grid-3">
       <div class="card"><div class="muted small">Customer</div><h2>${escapeHtml(lead.customerName)}</h2><p class="muted">${escapeHtml(lead.mobile)}${lead.alternateMobile ? ' / ' + escapeHtml(lead.alternateMobile) : ''}</p>${statusBadge(lead.status)}</div>
       <div class="card"><div class="muted small">Current Stage</div><h2>${escapeHtml(stageName(lead.currentStageId))}</h2><p class="muted">Assigned: ${escapeHtml(userName(lead.assignedTo))}</p></div>
-      <div class="card"><div class="muted small">Product & Amount</div><h2>${escapeHtml(productName(lead.productId))}</h2><p class="muted">${db.settings.currency || '₹'} ${Number(lead.loanAmount || 0).toLocaleString()}</p></div>
+      <div class="card"><div class="muted small">Product & Amount</div><h2>${escapeHtml(productName(lead.productId))}</h2>${lead.subProduct ? `<p class="muted small">Sub Product: <b>${escapeHtml(lead.subProduct)}</b></p>` : ''}<p class="muted">${db.settings.currency || '₹'} ${Number(lead.loanAmount || 0).toLocaleString()}</p></div>
     </div>
     ${renderMonitoringSummary(lead)}
     <div class="grid grid-2" style="margin-top:16px">
@@ -1049,7 +1095,7 @@ function renderReportTable() {
   return `<div class="table-wrap cards"><table><thead><tr><th>Customer</th><th>Mobile</th><th>Product</th><th>Branch</th><th>Assigned</th><th>Stage</th><th>Source</th><th>Processing</th><th>Valuer</th><th>Advocate</th><th>PSIR</th><th>Status</th><th>Follow-up</th><th>Disbursed</th><th>Compliance</th></tr></thead><tbody>${rows.map(l => {
     const disb = db.disbursements.find(d => d.leadId === l.id);
     const comp = db.complianceRecords.filter(c => c.leadId === l.id);
-    return `<tr><td data-label="Customer"><b>${escapeHtml(l.customerName)}</b></td><td data-label="Mobile">${escapeHtml(l.mobile)}</td><td data-label="Product">${escapeHtml(productName(l.productId))}</td><td data-label="Branch">${escapeHtml(branchName(l.branchId))}</td><td data-label="Assigned">${escapeHtml(userName(l.assignedTo))}</td><td data-label="Stage">${escapeHtml(stageName(l.currentStageId))}</td><td data-label="Source">${escapeHtml(sourceName(l.leadSourceId))}<div class="muted small">${escapeHtml(sourceDetail(l))}</div></td><td data-label="Processing">${escapeHtml(l.processingTeamName || '-')}</td><td data-label="Valuer">${escapeHtml(l.valuerName || '-')}</td><td data-label="Advocate">${escapeHtml(l.advocateName || '-')}</td><td data-label="PSIR">${escapeHtml(l.psirPersonName || '-')}</td><td data-label="Status">${statusBadge(l.status)}${l.deleteStatus === 'pending' ? '<br><span class="badge amber">Delete Requested</span>' : l.deleteStatus === 'rejected' ? '<br><span class="badge gray">Delete Rejected</span>' : ''}</td><td data-label="Follow-up">${escapeHtml(l.nextFollowUpDate || '-')}</td><td data-label="Disbursed">${disb ? (db.settings.currency || '₹') + ' ' + Number(disb.disbursedAmount || 0).toLocaleString() : '-'}</td><td data-label="Compliance">${comp.length ? comp.filter(c => c.completed).length + '/' + comp.length : '-'}</td></tr>`;
+    return `<tr><td data-label="Customer"><b>${escapeHtml(l.customerName)}</b></td><td data-label="Mobile">${escapeHtml(l.mobile)}</td><td data-label="Product">${escapeHtml(productName(l.productId))}${l.subProduct ? `<div class="muted small">${escapeHtml(l.subProduct)}</div>` : ''}</td><td data-label="Branch">${escapeHtml(branchName(l.branchId))}</td><td data-label="Assigned">${escapeHtml(userName(l.assignedTo))}</td><td data-label="Stage">${escapeHtml(stageName(l.currentStageId))}</td><td data-label="Source">${escapeHtml(sourceName(l.leadSourceId))}<div class="muted small">${escapeHtml(sourceDetail(l))}</div></td><td data-label="Processing">${escapeHtml(l.processingTeamName || '-')}</td><td data-label="Valuer">${escapeHtml(l.valuerName || '-')}</td><td data-label="Advocate">${escapeHtml(l.advocateName || '-')}</td><td data-label="PSIR">${escapeHtml(l.psirPersonName || '-')}</td><td data-label="Status">${statusBadge(l.status)}${l.deleteStatus === 'pending' ? '<br><span class="badge amber">Delete Requested</span>' : l.deleteStatus === 'rejected' ? '<br><span class="badge gray">Delete Rejected</span>' : ''}</td><td data-label="Follow-up">${escapeHtml(l.nextFollowUpDate || '-')}</td><td data-label="Disbursed">${disb ? (db.settings.currency || '₹') + ' ' + Number(disb.disbursedAmount || 0).toLocaleString() : '-'}</td><td data-label="Compliance">${comp.length ? comp.filter(c => c.completed).length + '/' + comp.length : '-'}</td></tr>`;
   }).join('')}</tbody></table></div>`;
 }
 
@@ -1228,6 +1274,7 @@ function leadExportRows(leads = visibleLeads()) {
       Alternate: l.alternateMobile,
       Branch: branchName(l.branchId),
       Product: productName(l.productId),
+      SubProduct: l.subProduct || '',
       Source: sourceName(l.leadSourceId),
       SourceDetailType: sourceDetailLabel(l),
       SourceDetailName: sourceDetail(l),
@@ -1367,4 +1414,4 @@ if ('serviceWorker' in navigator) {
 render();
 
 // Expose functions for inline handlers
-Object.assign(window, { navigate, login, logout, installApp, refreshApp, toggleSidebar, gotoReport, clearLeadFilters, openInstallHelp, dismissInstallBanner, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });
+Object.assign(window, { navigate, login, logout, installApp, refreshApp, toggleSidebar, gotoReport, clearLeadFilters, openInstallHelp, dismissInstallBanner, menuAction, openDrawer, closeDrawer, drawerBackdrop, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });
