@@ -196,3 +196,72 @@ tr:hover td { background:#f8fafc; }
 .tool-card.disabled { cursor:default; opacity:.6; box-shadow:none; }
 .tool-icon { width:48px; height:48px; border-radius:14px; display:grid; place-items:center; background: var(--primary-soft); color: var(--primary); font-size:24px; }
 .tool-name { font-size:16px; font-weight:800; color: var(--text); }
+
+/* ============ v4 usability / control redesign ============ */
+
+/* Topbar: toggle + compact icon actions */
+.topbar-left { display:flex; align-items:center; gap:12px; min-width:0; }
+.topbar-head { min-width:0; }
+.icon-btn { border:1px solid var(--border); background:#fff; color:var(--text); border-radius:12px; padding:10px 12px; font-weight:700; display:inline-flex; align-items:center; gap:8px; }
+.icon-btn:hover { border-color:#bfdbfe; box-shadow:0 4px 20px rgba(29,78,216,.12); }
+.icon-btn .ico { font-size:15px; line-height:1; }
+.sidebar-toggle { font-size:18px; line-height:1; flex-shrink:0; }
+
+/* Collapsible sidebar (desktop) */
+.app-shell.collapsed { grid-template-columns: 78px 1fr; }
+.app-shell.collapsed .sidebar { padding:18px 12px; }
+.app-shell.collapsed .brand { justify-content:center; }
+.app-shell.collapsed .brand-text,
+.app-shell.collapsed .nav .lbl,
+.app-shell.collapsed .user-chip,
+.app-shell.collapsed .sidebar-footer .lbl { display:none; }
+.app-shell.collapsed .nav button { justify-content:center; padding:12px; }
+.app-shell.collapsed .nav .icon { width:auto; font-size:18px; }
+.app-shell.collapsed .sidebar-footer .btn { padding:11px; }
+.brand-text { min-width:0; }
+
+/* Clickable KPI cards */
+.kpi-click { cursor:pointer; transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+.kpi-click:hover { transform: translateY(-2px); border-color: var(--primary); box-shadow: 0 16px 40px rgba(29,78,216,.14); }
+.kpi-click:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+
+/* Files filter bar + result count */
+.filter-bar { display:grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap:10px; margin-bottom:12px; align-items:center; }
+.search-wrap { position:relative; }
+.search-wrap .search-ico { position:absolute; left:12px; top:50%; transform:translateY(-50%); font-size:14px; opacity:.55; pointer-events:none; }
+.search-wrap .input { padding-left:34px; }
+.result-count { font-size:13px; color:var(--muted); font-weight:700; margin-bottom:12px; }
+.result-count span { color:var(--text); }
+
+/* Table polish: zebra + clearer hover */
+tbody tr:nth-child(even) td { background:#fbfcfe; }
+tr:hover td { background:#eef2f7; }
+
+/* Tablet/desktop keeps table scroll; phones get card layout */
+@media (max-width: 700px) {
+  .filter-bar { grid-template-columns: 1fr 1fr; }
+  .filter-bar .search-wrap { grid-column: 1 / -1; }
+  .filter-bar .btn.ghost { grid-column: 1 / -1; }
+
+  .table-wrap.cards { border:0; overflow:visible; }
+  .table-wrap.cards table { min-width:0; width:100%; background:transparent; }
+  .table-wrap.cards thead { display:none; }
+  .table-wrap.cards tbody tr { display:block; background:#fff; border:1px solid var(--border); border-radius:16px; padding:4px 14px; margin-bottom:12px; box-shadow:var(--shadow); }
+  .table-wrap.cards tbody tr:nth-child(even) td,
+  .table-wrap.cards td { background:transparent; }
+  .table-wrap.cards td { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; border:0; border-bottom:1px dashed var(--border); padding:10px 0; text-align:right; }
+  .table-wrap.cards tr td:last-child { border-bottom:0; }
+  .table-wrap.cards td::before { content: attr(data-label); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); text-align:left; flex:0 0 auto; padding-top:2px; }
+  .table-wrap.cards td .muted.small { text-align:right; }
+  .table-wrap.cards td .btn-row { justify-content:flex-end; flex-wrap:wrap; }
+}
+
+/* Keep single-column layout on mobile even when sidebar is 'collapsed' */
+@media (max-width: 980px) {
+  .app-shell.collapsed { grid-template-columns: 1fr; }
+  .sidebar-toggle { display:none; }
+}
+@media (max-width: 640px) {
+  .topbar-actions .lbl { display:none; }
+  .topbar-actions .btn { padding:10px 11px; }
+}
