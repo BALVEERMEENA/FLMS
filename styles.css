@@ -189,3 +189,10 @@ tr:hover td { background:#f8fafc; }
 .emi-emi { font-size: 32px; font-weight: 900; color: var(--primary-2); margin-top: 4px; line-height:1.1; }
 .stat { background: var(--card-2); border:1px solid var(--border); border-radius: 14px; padding: 12px 14px; }
 .stat b { display:block; margin-top: 4px; font-size: 16px; }
+
+/* Tools page */
+.tool-card { display:flex; flex-direction:column; align-items:flex-start; gap:6px; text-align:left; background: var(--card); border:1px solid var(--border); border-radius: 16px; padding: 18px; box-shadow: var(--shadow); cursor:pointer; transition: transform .12s ease, border-color .12s ease; width:100%; }
+.tool-card:hover:not(.disabled) { transform: translateY(-2px); border-color: var(--primary); }
+.tool-card.disabled { cursor:default; opacity:.6; box-shadow:none; }
+.tool-icon { width:48px; height:48px; border-radius:14px; display:grid; place-items:center; background: var(--primary-soft); color: var(--primary); font-size:24px; }
+.tool-name { font-size:16px; font-weight:800; color: var(--text); }

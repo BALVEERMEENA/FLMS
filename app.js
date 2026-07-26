@@ -302,6 +302,7 @@ window.addEventListener('hashchange', () => {
 function pageTitle() {
   const titles = {
     dashboard: ['Dashboard', 'Live file movement, pending work, disbursement and compliance summary'],
+    tools: ['Tools', 'Handy calculators and utilities for loan processing'],
     emi: ['EMI Calculator', 'Estimate monthly instalment, total interest and amortization schedule'],
     leads: ['Leads & Files', 'Create leads and move files from generation to disbursement'],
     lead: ['File Details', 'Timeline, documents, disbursement and compliance'],
@@ -313,28 +314,35 @@ function pageTitle() {
   return titles[currentRoute] || titles.dashboard;
 }
 
+function isRouteActive(route) {
+  if (currentRoute === route) return true;
+  // Keep "Tools" highlighted while viewing any individual tool sub-page.
+  if (route === 'tools') return TOOLS.some(t => t.route === currentRoute);
+  return false;
+}
+
 function navButtons() {
   const items = [
     ['dashboard', '📊', 'Dashboard'],
     ['leads', '📁', 'Files'],
-    ['emi', '🧮', 'EMI Calc'],
+    ['tools', '🧰', 'Tools'],
     ...(can('viewReports') ? [['reports', '📈', 'Reports']] : []),
     ...(can('manageAdmin') ? [['admin', '⚙️', 'Admin']] : []),
     ...(can('viewAudit') ? [['audit', '🧾', 'Audit']] : []),
     ...(can('backupData') ? [['backup', '💾', 'Backup']] : [])
   ];
-  return items.map(([route, icon, label]) => `<button class="${currentRoute === route ? 'active' : ''}" onclick="navigate('${route}')"><span class="icon">${icon}</span>${label}</button>`).join('');
+  return items.map(([route, icon, label]) => `<button class="${isRouteActive(route) ? 'active' : ''}" onclick="navigate('${route}')"><span class="icon">${icon}</span>${label}</button>`).join('');
 }
 
 function mobileNavButtons() {
   const items = [
     ['dashboard', '📊', 'Home'],
     ['leads', '📁', 'Files'],
-    ['emi', '🧮', 'EMI'],
+    ['tools', '🧰', 'Tools'],
     ...(can('viewReports') ? [['reports', '📈', 'Reports']] : []),
     ...(can('manageAdmin') ? [['admin', '⚙️', 'Admin']] : [])
   ];
-  return items.slice(0, 5).map(([route, icon, label]) => `<button class="${currentRoute === route ? 'active' : ''}" onclick="navigate('${route}')"><span class="mi">${icon}</span>${label}</button>`).join('');
+  return items.slice(0, 5).map(([route, icon, label]) => `<button class="${isRouteActive(route) ? 'active' : ''}" onclick="navigate('${route}')"><span class="mi">${icon}</span>${label}</button>`).join('');
 }
 
 function renderShell(content) {
@@ -376,6 +384,7 @@ function render() {
   }
   let content = '';
   if (currentRoute === 'dashboard') content = renderDashboard();
+  else if (currentRoute === 'tools') content = renderTools();
   else if (currentRoute === 'emi') content = renderEmi();
   else if (currentRoute === 'leads') content = renderLeads();
   else if (currentRoute === 'lead') content = renderLeadDetail(currentLeadId);
@@ -1021,6 +1030,35 @@ function renderBackup() {
   return `<div class="grid grid-2"><div class="card"><h2>Export Backup</h2><p class="muted">Download full local database JSON. Keep this safe.</p><button class="btn primary" onclick="exportBackup()">Download Backup JSON</button></div><div class="card"><h2>Import Backup</h2><p class="muted">Import a previously exported JSON backup. This will replace current browser data.</p><input class="input" type="file" id="backupFile" accept="application/json"><br><br><button class="btn danger" onclick="importBackup()">Import & Replace Data</button></div><div class="card"><h2>Storage Note</h2><p class="muted">This GitHub-only version saves data in browser localStorage. For shared branch/team usage across devices, connect Firebase Auth + Firestore.</p></div></div>`;
 }
 
+// ---------- Tools ----------
+// Registry of available tools. Add new tools here and they appear on the
+// Tools page automatically. `route` must have a matching case in render().
+const TOOLS = [
+  { route: 'emi', icon: '🧮', name: 'EMI Calculator', desc: 'Monthly instalment, total interest and full amortization schedule.', available: true }
+];
+
+function renderTools() {
+  return `
+    <div class="card">
+      <div class="card-title"><h2>Tools</h2></div>
+      <p class="muted">Calculators and utilities to help with loan processing. More tools will be added here.</p>
+      <div class="grid grid-3" style="margin-top:16px">
+        ${TOOLS.map(t => t.available
+          ? `<button class="tool-card" onclick="navigate('${t.route}')">
+               <div class="tool-icon">${t.icon}</div>
+               <div class="tool-name">${escapeHtml(t.name)}</div>
+               <div class="muted small">${escapeHtml(t.desc)}</div>
+             </button>`
+          : `<div class="tool-card disabled">
+               <div class="tool-icon">${t.icon}</div>
+               <div class="tool-name">${escapeHtml(t.name)}</div>
+               <div class="muted small">${escapeHtml(t.desc)}</div>
+               <span class="badge gray" style="margin-top:8px">Coming soon</span>
+             </div>`).join('')}
+      </div>
+    </div>`;
+}
+
 // ---------- EMI Calculator ----------
 function computeEmi(principal, annualRate, months) {
   const P = Number(principal) || 0;
@@ -1055,6 +1093,7 @@ function fmtMoney(v) {
 
 function renderEmi() {
   return `
+  <div class="btn-row" style="margin-bottom:14px"><button class="btn" onclick="navigate('tools')">← Back to Tools</button></div>
   <div class="grid grid-2">
     <div class="card">
       <div class="card-title"><h2>Loan Details</h2></div>
