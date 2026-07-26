@@ -356,6 +356,7 @@ function renderShell(content) {
         <header class="topbar">
           <div><h1>${title}</h1><p>${subtitle}</p></div>
           <div class="btn-row">
+            <button class="btn" onclick="refreshApp()" title="Fetch the latest version">🔄 Update</button>
             <button class="btn" onclick="installApp()">Install App</button>
             <button class="btn" onclick="logout()">Logout</button>
           </div>
@@ -1197,6 +1198,25 @@ function resetDB() { if (!confirm('Reset all data?')) return; localStorage.remov
 
 function exportCurrentVisibleCSV() { exportLeadsCSV(); }
 
+async function refreshApp() {
+  toast('Updating to latest version…');
+  try {
+    // Ask the browser to check for a new service worker version.
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.update().catch(() => {})));
+    }
+    // Clear cached app shell so the newest files are fetched. This does NOT
+    // touch localStorage, so all saved leads and settings are preserved.
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+  } catch (e) { console.warn('Refresh failed', e); }
+  // Reload from network with the caches cleared.
+  location.reload();
+}
+
 function installApp() {
   if (deferredPrompt) {
     deferredPrompt.prompt();
@@ -1212,4 +1232,4 @@ if ('serviceWorker' in navigator) {
 render();
 
 // Expose functions for inline handlers
-Object.assign(window, { navigate, login, logout, installApp, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });
+Object.assign(window, { navigate, login, logout, installApp, refreshApp, openLeadModal, updateSourceFields, saveLead, closeModal, removeModal, filterLeadTable, leadDeleteAction, requestLeadDelete, approveLeadDelete, rejectLeadDelete, moveStage, toggleDoc, saveDisbursement, toggleCompliance, adminTab, reportType, openUserModal, saveUser, applyRoleDefaultsInUserModal, openGenericModal, saveGeneric, openDocumentModal, saveDocument, toggleActive, exportLeadsCSV, exportCurrentReport, exportAuditCSV, exportBackup, importBackup, calcEmi, exportEmiCSV });
